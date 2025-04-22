@@ -23,7 +23,8 @@ Oberon
     │   file022.txt
 ```
 
-
+Use uvicorn main:app --reload in backend dir
+use npm run dev on frontend dir
 
 
         
