@@ -2,6 +2,8 @@
 .DS_Store
 *.log
 *.pem
+#.env*
+
 
 # Node.js front
 node_modules/
@@ -16,7 +18,6 @@ node_modules/
 out/
 build/
 .vercel
-.env*
 
 # Python back
 #venv/
@@ -24,7 +25,6 @@ build/
 #*.pyc
 #*.pyo
 #*.pyd
-#.env
 
 
 # Debugging files
