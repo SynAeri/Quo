@@ -19,14 +19,14 @@ build/
 .env*
 
 # Python back
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.env
+#venv/
+#__pycache__/
+#*.pyc
+#*.pyo
+#*.pyd
+#.env
 
 
 # Debugging files
-playgroundTest/auth.py
+#playgroundTest/auth.py
 
