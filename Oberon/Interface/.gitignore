@@ -2,8 +2,6 @@
 .DS_Store
 *.log
 *.pem
-#.env*
-
 
 # Node.js front
 node_modules/
@@ -18,15 +16,18 @@ node_modules/
 out/
 build/
 .vercel
+.env*
 
 # Python back
-#venv/
-#__pycache__/
-#*.pyc
-#*.pyo
-#*.pyd
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
 
 
 # Debugging files
-#playgroundTest/auth.py
+# playgroundTest/*
+
 
