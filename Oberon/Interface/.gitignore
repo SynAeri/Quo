@@ -25,3 +25,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+
+
+# Debugging files
+playgroundTest/*

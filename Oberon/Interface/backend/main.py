@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 app = FastAPI()
 
-# Allow CORS for the frontend's origin (replace with actual frontend URL if different)
+# Use cors to connect frontend thing to backend thing
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],  # Frontend URL
