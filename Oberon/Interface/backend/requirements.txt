@@ -1,0 +1,17 @@
+# Web Framework
+fastapi
+uvicorn[standard]
+
+# Environment Variables
+python-dotenv
+
+# HTTP Requests
+requests
+
+# Data Processing (Python 3.12 compatible versions)
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Testing
+pytest
+httpx

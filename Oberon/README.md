@@ -26,5 +26,3 @@ Oberon
 Use uvicorn main:app --reload in backend dir
 use npm run dev on frontend dir
 
-
-        

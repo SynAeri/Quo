@@ -18,16 +18,23 @@ build/
 .vercel
 .env*
 
-# Python back
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# Environment variables
 .env
 
+# Python virtual environment
+venv/
+.venv/
 
-# Debugging files
-# playgroundTest/*
+# Python cache
+__pycache__/
+*.pyc
 
+# Database files
+*.db
+*.sqlite
 
+# Logs
+*.log
+
+# OS files
+.DS_Store
