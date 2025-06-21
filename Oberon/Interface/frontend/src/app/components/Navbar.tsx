@@ -9,8 +9,7 @@ const Navbar = () => {
   return (
     <nav className=""
     style={{
-      position: 'fixed',
-      bottom: 0,
+      position: 'fixed', 
       }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
@@ -19,17 +18,14 @@ const Navbar = () => {
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
               <div className="h-8 w-8 bg-blue-600 rounded-md"></div>
-              <span className="ml-2 text-xl font-bold hover:text-blue-600">Synaeri</span>
+              <span className="ml-2 text-xl font-bold hover:text-blue-600">Quo</span>
             </Link>
             <div className="ml-10 flex items-center space-x-4">
             <Link href="/services" className="text-gray-600 hover:text-blue-600 hover:bg-gray-50 px-3 py-2 rounded-md text-sm font-medium">
-              Services
+             About 
             </Link>
             <Link href="/projects" className="text-gray-600 hover:text-blue-600 hover:bg-gray-50 px-3 py-2 rounded-md text-sm font-medium">
-              Projects
-            </Link>
-            <Link href="/commissions" className="text-gray-600 hover:text-blue-600 hover:bg-gray-50 px-3 py-2 rounded-md text-sm font-medium">
-              Commissions
+             FAQ
             </Link>
             </div>
           </div>

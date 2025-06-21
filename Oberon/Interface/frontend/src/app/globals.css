@@ -52,6 +52,9 @@ body {
   min-height: 100vh;
   flex-direction: column;
   letter-spacing: var(--letter-spacing);
+  position: relative;
+  overflow: hidden;
+
 }
 
 
@@ -67,5 +70,5 @@ body {
     rgba(0,0,0, 0.2) 23px,
     transparent 23px
   );
-  margin-bottom: 8px;
+
 }
