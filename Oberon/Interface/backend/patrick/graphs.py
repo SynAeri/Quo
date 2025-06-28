@@ -1,55 +1,47 @@
 import matplotlib.pyplot as plt
 
 class Graphs:
-    def __init__(self, TransactionGroup):
-        self.transactions = TransactionGroup
+    # Accepts a list of x points and y points to create a simple graph
+    def __init__(self, xPoints: list, yPoints: list, title: str, xLabel: str, yLabel: str):
+        self.x = xPoints
+        self.y = yPoints
+        self.title = title
+        self.x_label = xLabel
+        self.y_label = yLabel
     
-    def plot_totals(self, method, target_year):
-        grouped_data = self.transactions.group_by_year_and_month()
+    # Plots a bar graphy :)
+    def plot_bar(self, filename: str = "bar.png"):
+        plt.figure(figsize=(20, 10))
+        plt.bar(self.x, self.y)
+        plt.xlabel(self.x_label)
+        plt.ylabel(self.y_label)
+        plt.title(self.title)
+        plt.xticks(rotation=60, ha='right')
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+    
+    # Plots a line graphy :)
+    def plot_line(self, filename: str = "line.png"):
+        plt.figure(figsize=(20, 10))
+        plt.plot(self.x, self.y, marker='o')
+        plt.xlabel(self.x_label)
+        plt.ylabel(self.y_label)
+        plt.title(self.title)
+        plt.xticks(rotation=60, ha='right')
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+    
+    # Plots a pie graphy :)
+    def plot_pie(self, filename="pie_chart.png"):
+        plt.figure(figsize=(12, 12))
+        #plt.pie(self.y, self.x, autopct='%1.1f%%', startangle=140)
         
-        if method == "yearly":
-            yearly_totals = {}
-
-            for year, months in grouped_data.items():
-                total = 0
-                for transactions in months.values():
-                    for tx in transactions:
-                        total += tx.amount
-                yearly_totals[year] = total
-
-            years = list(map(int, yearly_totals.keys()))
-            totals = list(yearly_totals.values())
-
-            plt.figure(figsize=(8, 5))
-            plt.bar(years, totals)
-            plt.xticks(years)
-            plt.xlabel("Year")
-            plt.ylabel("Total Spent ($)")
-            plt.title("Total Amount Spent Per Year")
-            plt.tight_layout()
-            plt.savefig("Yearly_Spending.png")
-        
-        if method == "monthly":
-            monthly_totals = []
-
-            for year, months in grouped_data.items():
-                if year != target_year:
-                    continue 
-
-                for (month_num, month_name), transactions in months.items():
-                    total = sum(tx.amount for tx in transactions)
-                    label = f"{month_name}"
-                    monthly_totals.append((month_num, label, total))
-
-            monthly_totals.sort(key=lambda x: x[0])
-
-            labels = [label for _, label, _ in monthly_totals]
-            values = [total for _, _, total in monthly_totals]
-
-            plt.figure(figsize=(10, 5))
-            plt.bar(labels, values)
-            plt.xlabel(f"Months in {target_year}")
-            plt.ylabel("Total Spent ($)")
-            plt.title(f"Monthly Spending in {target_year}")
-            plt.tight_layout()
-            plt.savefig(f"Monthly_Spending.png")
+        plt.pie(self.y, autopct='%1.1f%%', startangle=140)
+        plt.legend(self.x, loc='center left', bbox_to_anchor=(1, 0.5))
+        plt.title(self.title)
+        plt.axis('equal')
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
