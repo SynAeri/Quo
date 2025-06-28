@@ -2,9 +2,10 @@ from datetime import datetime
 from collections import defaultdict
 import calendar
 
-from graphs import Graphs
-
 class Transaction:
+    # Holds information about ONE transaction. (Can add functions to this however its not of use now)
+    # This is only used to basically store information instead of a ugly list or dict
+    
     def __init__(self, description: str, category: str, date: str, amount: float, mode: str):
         self.description = description
         self.category = category
@@ -12,17 +13,13 @@ class Transaction:
         self.amount = amount
         self.mode = mode
         
-    def is_transfer(self):
-        if self.mode == "transfer":
-            return True
-        else:
-            return False
-        
 class AllTransactions:
+    # Holds a list of transactions, 
     def __init__(self, transactions: list[Transaction]):
         self.transactions = transactions
         self.grouped = self.group_by_year_and_month()
     
+    # Groups transactions by their year and month and returns a list
     def group_by_year_and_month(self):
         grouped = defaultdict(lambda: defaultdict(list))
         for tx in self.transactions:
@@ -73,6 +70,32 @@ class AllTransactions:
             
         return "\n".join(lines)
             
-    def graph_transactions(self, format):
-        newGraph = Graphs(self)
-        newGraph.plot_totals(format, 2024)
+    def category_total_points(self):
+        totals = self.get_total_by_category()
+        xPoints = list(totals.keys())
+        yPoints = list(totals.values())
+        
+        return xPoints, yPoints
+    
+    def category_averages_points(self):
+        averages = self.get_average_by_category()
+        xPoints = list(averages.keys())
+        yPoints = list(averages.values())
+        
+        return xPoints, yPoints
+    
+    def monthly_totals_points(self, year: int):
+        x_points = []
+        y_points = []
+
+        if year not in self.grouped:
+            print("Couldn't find that year in transactions")
+            return [], []
+
+        months = self.grouped[year]
+        for (month_num, month_name) in sorted(months.keys()):
+            total = sum(tx.amount for tx in months[(month_num, month_name)])
+            x_points.append(month_name)
+            y_points.append(total)
+
+        return x_points, y_points
