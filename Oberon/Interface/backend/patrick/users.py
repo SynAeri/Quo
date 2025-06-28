@@ -5,18 +5,20 @@ from typing import List, Dict, Optional
 from transactions import Transaction, AllTransactions
 
 class User:
-    def __init__(self, user_id: str, filter_transfer: bool):
+    def __init__(self, user_id: str, filter_transfer: bool, filter_loans: bool):
         self.user_id = user_id
         self.filter_transfer = filter_transfer
+        self.filter_loans = filter_loans
         self.BasiqManager = self.create_API_Interface()
         self.transactions = self.fetch_transactions()
         self.accounts = self.get_accounts()
     
     def create_API_Interface(self) -> BasiqAPI:
+        # Every user has a BasiqAPI class to ensure we can make future API calls corresponding with a certain user
         return BasiqAPI(api_key="OGZmYTY5YWYtODhlMy00YTU3LThmMzMtYTVlMGE3YzA5OGY3Ojk3YzJhODE4LWU5ZjMtNDI5MC1iNzkyLWJkZjI5ZmU5M2NhMg==", User=self)
     
     def fetch_transactions(self) -> List[Transaction]:
-        data = self.BasiqManager.getTransactionData(self.filter_transfer)
+        data = self.BasiqManager.getTransactionData(self.filter_transfer, self.filter_loans)
         if not data:
             return "Error Retrieving Transactions"
         
@@ -34,6 +36,8 @@ class User:
         return AllTransactions(self.transactions)
     
     def account_analysis(self) -> dict:
+        # THIS IS A ROUGH ESTIMATE AND YOU SHOULD NOT MAKE FINANCIAL CONCLUSIONS HERE
+        
         # Here we calculate the sum of balances for a users different accounts
         # This function is used to calculate positive and negative balanace and aggregate them together
         
@@ -85,22 +89,22 @@ class User:
         if total_assets > 0:
             # A surplus ratio shows the fraction of your total assets that you are able to invest into
             
-            surplus_ratio = investable / total_assets ## Investable Cash / Total Positive Assets
+            ratio = investable / total_assets ## Investable Cash / Total Positive Assets
             
             # A Low Surplus Ratio indicates that you have little liquid cash available (< 0.2) --> We can change this at the pick_risk_allocation function
             # Medium Surplus Radio indicates that you can take moderate risk in investing (0.2 - 0.5)
             # High ratio indicates that more than half of you assets are liquid (> 0.5) Hence you can be more aggressive in investing
             
         else:
-            surplus_ratio = 0.0
+            ratio = 0.0
             
-        verdict = pick_risk_allocation(surplus_ratio)
+        verdict = pick_risk_allocation(ratio)
         
         result = {
         'total_assets':     round(total_assets, 2),
         'total_debt':       round(total_debt, 2),
         'investable':       round(investable, 2),
-        'surplus_ratio':    round(surplus_ratio, 2),
+        'ratio':    round(ratio, 2),
         'verdict':       verdict,
         }
         
@@ -109,6 +113,9 @@ class User:
                 
     
 class UserManager:
+    # The User Manager class holds all users in it and allows us to do various functions with a grouped amount of users.
+    
+    # Please ensure you add all the users via the add_user function before you use any other functions that depend on various users.
     def __init__(self):
         self.users = {}
         
