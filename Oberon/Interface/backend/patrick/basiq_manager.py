@@ -3,12 +3,14 @@ import json
 api_key = "OGZmYTY5YWYtODhlMy00YTU3LThmMzMtYTVlMGE3YzA5OGY3Ojk3YzJhODE4LWU5ZjMtNDI5MC1iNzkyLWJkZjI5ZmU5M2NhMg==" ## For Tests
  
 class BasiqAPI:
+    # Class that incorporates most of the Basiq API requests
     def __init__(self, api_key: str, User):
         self.api_key = api_key
         self.user = User
         self.auth_token = self.getToken()
         
-    def getToken(self):
+    def getToken(self) -> str:
+        # Retrieves the token needed to be used for other API requests (VITAL)
         url = "https://au-api.basiq.io/token"
 
         headers = {
@@ -27,8 +29,8 @@ class BasiqAPI:
         except Exception as e:
             print(f"Error obtaining Access Token: {e}") 
 
-    def grab_identites(self):
-        
+    def grab_identites(self) -> dict:
+        # Retrieves identities of users (I don't really know what identities are used for but i just added it here)
         if not self.auth_token:
             print("Error when obtaining Auth Token (Grab Identities)")
             return
@@ -53,19 +55,41 @@ class BasiqAPI:
         except Exception as e:
             print(f"Failed getting identities: {e}")
         
-    def getTransactionData(self, Transfers: bool):
+    def getTransactionData(self, filter_transfer: bool, filter_loans: bool) -> dict:
+        # The most important function in retrieving user transactions.
+        # This sorts each individual transaction by their description, category, date, amount, and its mode of payment
+        current_data = []
+        
+        def insert_transaction():
+            description = i.get('description', 'No Description')
+            post_date = i.get('postDate', 'No Date')
+            sub_class = i.get('subClass')
+            transaction_amount = i.get('amount')
+
+            if sub_class:
+                category = sub_class.get('title', 'No Category')
+            else:
+                category = 'No Category'
+
+            data_payload = {
+                'description': description,
+                'category': category,
+                'date': post_date,
+                'amount': abs(float(transaction_amount)),
+                'mode': mode
+                }
+            
+            current_data.append(data_payload)
         
         if not self.auth_token:
             print("Error when obtaining Auth Token (Getting Transaction Data)")
             return
-        
-        current_data = []
-        
+                
         headers = {
         "accept": "application/json",
         "authorization": f"Bearer {self.auth_token}"
         }
-        
+        # We can remove the limit or increase it to our liking depending on how many transactions you want
         url = f"https://au-api.basiq.io/users/{self.user.user_id}/transactions?limit=500"
         try:
             response = requests.get(url, headers=headers)
@@ -75,44 +99,19 @@ class BasiqAPI:
                 for i in data['data']:
                     mode = i.get('class')
                     
-                    if not Transfers:
-                        if mode != "transfer":
-                            description = i.get('description', 'No Description')
-                            post_date = i.get('postDate', 'No Date')
-                            sub_class = i.get('subClass')
-                            transaction_amount = i.get('amount')
-
-                            if sub_class:
-                                category = sub_class.get('title', 'No Category')
-                            else:
-                                category = 'No Category'
-
-                            current_data.append({
-                                'description': description,
-                                'category': category,
-                                'date': post_date,
-                                'amount': abs(float(transaction_amount)),
-                                'mode': mode
-                                })
-                    else:
-                        description = i.get('description', 'No Description')
-                        post_date = i.get('postDate', 'No Date')
-                        sub_class = i.get('subClass')
-                        transaction_amount = i.get('amount')
-
-                        if sub_class:
-                            category = sub_class.get('title', 'No Category')
-                        else:
-                            category = 'No Category'
-
-                        current_data.append({
-                            'description': description,
-                            'category': category,
-                            'date': post_date,
-                            'amount': abs(float(transaction_amount)),
-                            'mode': mode
-                            })
-                
+                    if mode == "transfer":
+                        if filter_transfer:
+                            continue
+                        insert_transaction()
+                        
+                    if mode == "loan-interest" or mode == "loan-repayment":
+                        if filter_loans:
+                            continue
+                        insert_transaction()
+                        
+                    insert_transaction()
+                    
+                   
                 return current_data
             else:
                 print(f"Error: {response.status_code}, {response.text}")
@@ -121,8 +120,9 @@ class BasiqAPI:
             print(f"Error occured when sending API Request {e}")
             return None
     
-    def get_accounts(self):
-        
+    def get_accounts(self) -> dict:
+        # This functions gets the various banking accounts of a user.
+        # This could either be their saving accounts, cheque, loan accounts, etc.
         if not self.auth_token:
             print("Error when obtaining Auth Token (Grabbing Accounts)")
             return
@@ -139,7 +139,9 @@ class BasiqAPI:
             accounts = []
             if response.status_code == 200:
                 data = response.json()
+                # The only data we get from the account is its num, name, balance and institution (ANZ, ETC)
                 for account in data['data']:
+                    print(account)
                     account = {
                         "accountNum": account['accountNo'],
                         "accountName": account['name'],
@@ -147,6 +149,30 @@ class BasiqAPI:
                         "institution": account['institution']
                     }
                     accounts.append(account)
+            
+            return accounts
+        except Exception as e:
+            print(f"Failed getting accounts: {e}")
+            
+    def get_single_account(self, account_id):
+        if not self.auth_token:
+            print("Error when obtaining Auth Token (Grabbing Accounts)")
+            return
+        
+        url = f"https://au-api.basiq.io/users/{self.user.user_id}/accounts/{account_id}"
+
+        headers = {
+            "accept": "application/json",
+            "authorization": f"Bearer {self.auth_token}"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            accounts = []
+            if response.status_code == 200:
+                data = response.json()
+                # The only data we get from the account is its num, name, balance and institution (ANZ, ETC)
+                print(data)
             
             return accounts
         except Exception as e:
