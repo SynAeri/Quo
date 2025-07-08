@@ -36,7 +36,7 @@ def startup():
     
     print("Financial thingy working..")
 
-    database.init_database # referencing a method from database
+    database.init_database() # referencing a method from database
     # Creates database tables
 
 # ==================================================== #
@@ -72,11 +72,13 @@ async def signup(user_data: SignupRequest): # user data is auto validated by Sig
 
     # Error handler
     if "error" in result:
+        print("error found")
         if "already exists" in result["error"]: # we made error check in dict just making extra sure
             raise HTTPException(status_code=400, detail=result["error"]) # raise HTTPException 400 for bad request to frontend
         else:
+            print(result)
             raise HTTPException(status_code=500, detail=result["error"]) # raise HTTPException 500 for bad internal request to frontend
-
+            
     # Return Success otherwise
 
     return {
