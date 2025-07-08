@@ -1,117 +1,151 @@
-from fastapi import FastAPI, HTTPException
+# Handling API endpoints + Quo setup
+
+from fastapi import FastAPI, HTTPException # FastAPI: Framework, Exception: error responses for frontend
+
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional
+from pydantic.version import version_info # Basic communication
 
-# Create FastAPI app
-app = FastAPI(title="Quo Financial API", version="1.0.0")
+# Import modules from other files
+import config
+import database
+from models import SignupRequest, LoginRequest, BasiqConnectionReq 
 
-# Add CORS middleware
+# Quo initialisation
+app = FastAPI(title=config.API_TITLE, version=config.API_VERSION) # Better than hardcoding, incase future edits refer to config.py
+
+# ==================================================== #
+#                  CORS setup                          #
+# ==================================================== #
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=config.CORS_METHODS,
     allow_headers=["*"],
 )
 
-# Data models
-class SignupRequest(BaseModel):
-    email: str
-    password: str
-    firstName: str
-    lastName: str
 
-class LoginRequest(BaseModel):
-    email: str
-    password: str
+# ==================================================== #
+#                  Startup Quo                         #
+# ==================================================== #
 
-# Mock database
-mock_users = {}
+@app.on_event("startup")
+def startup():
+    # When server initialises
+    
+    print("Financial thingy working..")
 
+    database.init_database # referencing a method from database
+    # Creates database tables
+
+# ==================================================== #
+#                  Auth Endpoints                      #
+# ==================================================== #
+
+# API Endpoints
 @app.get("/")
 async def root():
-    return {
-        "message": "Quo Financial API is running!",
-        "version": "1.0.0",
-        "status": "active"
+# basically when someone checks localhost:xxx/
+    return{
+        "message": "Quo is running",
+        "version": config.API_VERSION,
+        "database": "SQLITE"
     }
 
+# AUTH endpoints
 @app.post("/api/auth/signup")
-async def signup(user_data: SignupRequest):
-    print(f"📝 Signup attempt: {user_data.email}")
+async def signup(user_data: SignupRequest): # user data is auto validated by SignupRequest method in model
+    # endpoint handles user registration
+    # Auto validated via SignupRequest model
     
-    if user_data.email in mock_users:
-        print(f"❌ User {user_data.email} already exists")
-        raise HTTPException(status_code=400, detail="User already exists")
-    
-    # Save user
-    mock_users[user_data.email] = {
-        "password": user_data.password,
-        "firstName": user_data.firstName,
-        "lastName": user_data.lastName,
-        "id": f"user_{len(mock_users) + 1}"
-    }
-    
-    user_info = mock_users[user_data.email]
-    print(f"✅ User {user_data.email} created successfully")
-    
-    return {
-        "success": True,
-        "message": "User created successfully",
-        "user": {
-            "id": user_info["id"],
-            "email": user_data.email,
-            "firstName": user_info["firstName"],
-            "lastName": user_info["lastName"]
-        },
-        "token": f"mock_jwt_token_{user_info['id']}"
-    }
+    print(f"Signup lodged: {user_data.email}") # since we look at data via email we print just this
 
+    result = database.create_user(
+          user_data.email,
+          user_data.password,
+          user_data.firstName,
+          user_data.lastName
+    )
+    # call create_user() fx and pass all needed data 
+    # will yield a dictionary with success or errors
+
+    # Error handler
+    if "error" in result:
+        if "already exists" in result["error"]: # we made error check in dict just making extra sure
+            raise HTTPException(status_code=400, detail=result["error"]) # raise HTTPException 400 for bad request to frontend
+        else:
+            raise HTTPException(status_code=500, detail=result["error"]) # raise HTTPException 500 for bad internal request to frontend
+
+    # Return Success otherwise
+
+    return {
+            "success": True,
+            "message": "User created successfully",
+            "user": {
+                "id": str(result["user_id"]),         # Convert number to string
+                "email": result["email"],
+                "firstName": result["first_name"],
+                "lastName": result["last_name"]
+            },
+            "token": f"jwt_token_{result['user_id']}"  # Create simple token
+    }            
+    # Gets sent to frotnend via return
+
+# Login endpoint
 @app.post("/api/auth/login")
-async def login(credentials: LoginRequest):
-    print(f"🔐 Login attempt: {credentials.email}")
+async def login(credentials: LoginRequest): # credentials is auto validated by LoginRequest method in model
     
-    if credentials.email not in mock_users:
-        print(f"❌ User {credentials.email} not found")
+    print(f"login lodged {credentials.email}")
+
+    # call DB functions
+    result = database.verify_user(credentials.email, credentials.password) # Checks if the email/pass fits
+
+    if "error" in result:
+        # wrong password or user not found
+        print(f"login failed: {result['error']}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    user_info = mock_users[credentials.email]
-    
-    if credentials.password != user_info["password"]:
-        print(f"❌ Wrong password for {credentials.email}")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    print(f"✅ User {credentials.email} logged in successfully")
-    
+        # 401: Unauthorised to frontend
+
+    # Return success otherwise
+    print(f"user {credentials.email} logged in success")
+
     return {
         "success": True,
         "message": "Login successful",
         "user": {
-            "id": user_info["id"],
-            "email": credentials.email,
-            "firstName": user_info["firstName"],
-            "lastName": user_info["lastName"]
+            "id": str(result["user_id"]),
+            "email": result["email"],
+            "firstName": result["first_name"],
+            "lastName": result["last_name"]
         },
-        "token": f"mock_jwt_token_{user_info['id']}"
+        "token": f"jwt_token_{result['user_id']}"
     }
 
-@app.get("/api/auth/verify")
+# Verification token validation to add later
 async def verify_token():
-    print("🔍 Token verification requested")
-    return {
-        "success": True,
-        "user": {
-            "id": "user_1",
-            "email": "mock@example.com",
-            "firstName": "Mock",
-            "lastName": "User"
-        }
-    }
+    pass
+
+# ==================================================== #
+#                  Debugging Endpoints                 #
+# ==================================================== #
 
 @app.get("/api/debug/users")
 async def get_all_users():
+    result = database.get_all_users()
+    
     return {
-        "total_users": len(mock_users),
-        "users": mock_users
+        "user total": result["total"],
+        "users": result["users"]
     }
+
+
+# ==================================================== #
+#                  Basiq Endpoint                      #
+# ==================================================== #
+
+@app.post("/api/basiq/save-connection")
+async def saveBasiqConnection(connection_data: BasiqConnectionReq):
+    # Saves bank connections when implementing Basiq
+    print(f"saving.. {connection_data.userID}")
+    return {"success"}
