@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { track } from '@vercel/analytics';
-import { useTernaryState } from '../../utils/useTernaryState';
+import { useTernaryState } from '../utils/useTernaryState';
 import { Button } from '../Button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { AccountVerificationFormLearnMoreModal } from './AccountVerificationFormLearnMoreModal';

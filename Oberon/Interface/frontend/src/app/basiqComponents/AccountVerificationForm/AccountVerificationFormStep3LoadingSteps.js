@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useTernaryState } from '../../utils/useTernaryState';
+import { useTernaryState } from '../utils/useTernaryState';
 import { Button } from '../Button';
 import { CircularProgressBar } from '../CircularProgressBar';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
