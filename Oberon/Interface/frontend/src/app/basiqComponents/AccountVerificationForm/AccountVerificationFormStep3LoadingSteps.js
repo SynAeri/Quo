@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTernaryState } from '../utils/useTernaryState';
 import { Button } from '../Button';
-import { CircularProgressBar } from '../CircularProgressBar';
+import { CircularProgressBar } from '../CircularProgressBar.js';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
 import { AccountVerificationFormResumeInBackgroundModal } from './AccountVerificationFormResumeInBackgroundModal';
 
