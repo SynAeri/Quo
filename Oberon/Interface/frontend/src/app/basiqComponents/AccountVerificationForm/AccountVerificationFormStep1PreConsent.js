@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { track } from '@vercel/analytics';
 import { useTernaryState } from '../utils/useTernaryState';
 import { Button } from '../Button';
-import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { AccountVerificationFormLearnMoreModal } from './AccountVerificationFormLearnMoreModal';
-import { StepLogo } from './StepLogo';
-import { StepHeading } from './StepHeading';
-import { StepDescription } from './StepDescription';
+import { LoadingSpinner } from '../LoadingSpinner';
+// import { StepLogo } from './StepLogo';
+// import { StepHeading } from './StepHeading';
+// import { StepDescription } from './StepDescription';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
 
 export function AccountVerificationFormStep1PreConsent() {
@@ -21,7 +20,7 @@ export function AccountVerificationFormStep1PreConsent() {
       {/* STEP LOGO */}
       {/* To help the user keep context of what product they're using, */}
       {/* and what bank they're about to connect to. */}
-      <StepLogo src="/product-logo-square.svg" alt="Piper logo" />
+      {/* <StepLogo src="/product-logo-square.svg" alt="Piper logo" /> */}
 
       <div className="flex flex-col justify-center flex-grow space-y-8">
         <div className="space-y-3 sm:space-y-4">
@@ -39,9 +38,9 @@ export function AccountVerificationFormStep1PreConsent() {
           {/* PRODUCT-COPY: Value exchange, e.g. a paragraph that answers the question "Why should I connect my bank account?" 
           It's important to communicate the value exchange, i.e. what will the product be able to do once 
           the user has connected their bank. */}
-          <StepDescription>
+{/*          <StepDescription>
             We need to verify the details of the account from which to to track your spending.
-          </StepDescription>
+          </StepDescription> */}
         </div>
 
         {/* PRE-CONSENT */}
@@ -186,12 +185,6 @@ export function AccountVerificationFormStep1PreConsent() {
           </Button>
         </div>
 
-        {/** LEARN MORE MODAL */}
-        <AccountVerificationFormLearnMoreModal
-          isOpen={isLearnMoreModalOpen}
-          onClose={closeLearnMoreModal}
-          onConfirm={(() => goToConsent())}
-        />
       </div>
     </div>
   );

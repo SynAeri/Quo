@@ -1,8 +1,8 @@
 import { Button } from '../Button';
-import { formatCurrency } from '../../utils/formatCurrency';
+import { formatCurrency } from '../utils/formatCurrency';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
-import { StepHeading } from './StepHeading';
-import { StepDescription } from './StepDescription';
+// import { StepHeading } from './StepHeading';
+// import { StepDescription } from './StepDescription';
 
 export function AccountVerificationFormStep5Summary() {
   const { finish, accountVerificationFormState } = useAccountVerificationForm();
@@ -53,13 +53,13 @@ export function AccountVerificationFormStep5Summary() {
       <div className="flex flex-col space-y-8">
         <div className="space-y-3 sm:space-y-4">
           {/* STEP HEADING */}
-          <StepHeading>You&rsquo;re all set!</StepHeading>
+          {/*       <StepHeading>You&rsquo;re all set!</StepHeading> */}
 
           {/* STEP DESCRIPTION */}
           {/* PRODUCT-COPY: Re-iterate the value exchange to the user. */}
           <StepDescription>
             We have verified the details of the bank account below, and you&rsquo;re good to go.
-          </StepDescription>
+          </StepDescription> 
         </div>
 
         {/* SUMMARY */}

@@ -2,14 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { track } from '@vercel/analytics';
 import { RadioGroup } from '@headlessui/react';
-import { formatCurrency } from '../../utils/formatCurrency';
-import { maskAccountNumber } from '../../utils/maskAccountNumber';
+import { formatCurrency } from '../utils/formatCurrency';
+import { maskAccountNumber } from '../utils/maskAccountNumber';
 import { Button } from '../Button';
 import { ErrorScene } from '../ErrorScene';
 import { ErrorMessage } from '../ErrorMessage';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
-import { StepHeading } from './StepHeading';
-import { StepDescription } from './StepDescription';
+// import { StepHeading } from './StepHeading';
+// import { StepDescription } from './StepDescription';
 
 export function AccountVerificationFormStep4SelectAccount() {
   const { goForward, updateAccountVerificationFormState, goToConsent, getUserConsent } = useAccountVerificationForm();
@@ -57,18 +57,18 @@ export function AccountVerificationFormStep4SelectAccount() {
         {/* STEP HEADING */}
         {/* PRODUCT-COPY: A short as possible heading to help the user quickly recognise the task at hand. */}
         <div className="space-y-3 sm:space-y-4">
-          <StepHeading>
+          {/*          <StepHeading>
             Select your daily <br />
             spending account
-          </StepHeading>
+          </StepHeading> */}
 
           {/* STEP DESCRIPTION */}
           {/* PRODUCT-COPY: Depending on what account features your product supports. */}
           {(loading || !errorOrNoData) && (
-            <StepDescription>
+            {/* <StepDescription>
               Please select an account that will allow direct debits. Many banks only allow withdrawals from transaction
               accounts.
-            </StepDescription>
+            </StepDescription> */}
           )}
         </div>
 
