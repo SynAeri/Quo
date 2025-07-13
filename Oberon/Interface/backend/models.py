@@ -72,4 +72,14 @@ class BasiqConnectionReq(BaseModel):
     institutionName: str # Bank names
     accountIDs: list # connected account ids
     
+class BasiqTokenRequest(BaseModel):
+    # defines structure for bank connection    
+    userID: str #Quo user ID
+
+class BasiqTokenResponse(BaseModel):
+    # defines structure for bank connection    
+    access_token: str 
+    token_type: str = "Bearer"
+    expires_in: int = 3600
+
 

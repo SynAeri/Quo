@@ -11,6 +11,7 @@
     "cypress:run": "cypress run --config-file=cypress.config.js"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.4",
     "@tsparticles/engine": "^3.8.1",
     "@tsparticles/react": "^3.0.0",
     "@tsparticles/slim": "^3.8.1",

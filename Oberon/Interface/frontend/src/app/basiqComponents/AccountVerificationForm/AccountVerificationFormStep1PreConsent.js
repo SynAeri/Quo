@@ -26,13 +26,6 @@ export function AccountVerificationFormStep1PreConsent() {
         <div className="space-y-3 sm:space-y-4">
           {/* STEP HEADING */}
           {/* A short as possible heading to help the user quickly recognise the task at hand. */}
-          <StepHeading>
-            Let&rsquo;s connect your
-            {/* FYI: The hard-coded linebreak (<br>) is purely for decorative purposes.
-            Only suitable if the text doesn't wrap in small devices (320px viewport width e.g.) */}
-            <br />
-            bank account
-          </StepHeading>
 
           {/* STEP DESCRIPTION */}
           {/* PRODUCT-COPY: Value exchange, e.g. a paragraph that answers the question "Why should I connect my bank account?" 
