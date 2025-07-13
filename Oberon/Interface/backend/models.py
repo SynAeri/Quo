@@ -67,14 +67,14 @@ class AuthResponse(BaseModel):
 class BasiqConnectionReq(BaseModel):
     # defines structure for bank connection
     
-    userID: str #Quo user ID
+    userId: str #Quo user ID
     basiqUserID: str #Basiq id
     institutionName: str # Bank names
     accountIDs: list # connected account ids
     
 class BasiqTokenRequest(BaseModel):
     # defines structure for bank connection    
-    userID: str #Quo user ID
+    userId: str #Quo user ID
 
 class BasiqTokenResponse(BaseModel):
     # defines structure for bank connection    

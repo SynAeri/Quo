@@ -3,6 +3,7 @@
 from fastapi import FastAPI, HTTPException # FastAPI: Framework, Exception: error responses for frontend
 
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic.version import version_info # Basic communication
 
 
@@ -153,7 +154,7 @@ async def get_all_users():
 @app.post("/api/basiq/save-connection")
 async def saveBasiqConnection(connection_data: BasiqConnectionReq):
     # Saves bank connections when implementing Basiq
-    print(f"saving.. {connection_data.userID}")
+    print(f"saving.. {connection_data.userId}")
     return {"success"}
 
 
@@ -162,46 +163,49 @@ async def saveBasiqConnection(connection_data: BasiqConnectionReq):
 # ==================================================== #
 
 @app.get("/api/client-token")
-async def getClientToken(userId: str): 
+async def get_client_token(userId: str):
+    """
+    Generate Basiq CLIENT_ACCESS token for frontend
+    """
     try:
+        # Get your Basiq API key from environment variables
         basiq_api_key = os.getenv("BASIQ_API_KEY")
-
+        
         if not basiq_api_key:
             raise HTTPException(status_code=500, detail="Basiq API key not configured")
-
-        print(f"Generating Basiq Token for user: {userId}")
-
-        # Encode API key for auth
+        
+        print(f"Generating Basiq token for user: {userId}")
+        
+        # Encode API key for Basic auth
         auth_string = f"{basiq_api_key}:"
         encoded_auth = base64.b64encode(auth_string.encode()).decode()
-
-        # Call basiq token endpoint
-            # Call Basiq token endpoint
-            response = requests.post(
-                "https://au-api.basiq.io/token",
-                headers={
-                    "Authorization": f"Basic {encoded_auth}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "scope": "CLIENT_ACCESS",
-                    "userId": userId
-                }
-            )
-
+        
+        # Call Basiq token endpoint
+        response = requests.post(
+            "https://au-api.basiq.io/token",
+            headers={
+                "Authorization": f"Basic {encoded_auth}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "scope": "CLIENT_ACCESS",
+                "userId": userId
+            }
+        )
+        
         if response.status_code != 200:
-                    print(f"Basiq API error: {response.status_code} - {response.text}")
-                    raise HTTPException(status_code=500, detail="Failed to get Basiq token")
-                
-                token_data = response.json()
-                print(f"Successfully generated token for user: {userId}")
-                
-                # Return just the access token (as expected by your frontend)
-                return token_data["access_token"]
+            print(f"Basiq API error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=500, detail="Failed to get Basiq token")
+        
+        token_data = response.json()
+        print(f"Successfully generated token for user: {userId}")
+        
+        # Return just the access token (as expected by your frontend)
+        return token_data["access_token"]
+        
     except requests.RequestException as e:
         print(f"Network error getting Basiq token: {e}")
         raise HTTPException(status_code=500, detail="Network error contacting Basiq")
     except Exception as e:
         print(f"Error getting Basiq token: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate client token")
-
