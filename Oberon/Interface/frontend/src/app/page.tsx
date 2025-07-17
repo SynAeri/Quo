@@ -39,6 +39,7 @@ export default function Home() {
           if (response.ok) {
             const userData = await response.json();
             setUser(userData.user);
+            sessionStorage.setItem('userId', userData.user.id); // Add this line
           } else {
             // Token is invalid, remove 
             localStorage.removeItem('authToken');
@@ -56,6 +57,7 @@ export default function Home() {
 
   const handleLoginSuccess = (userData: User) => {
     setUser(userData);
+    sessionStorage.setItem('userId', userData.id); // Add this line
     console.log('User logged in successfully:', userData);
   };
 

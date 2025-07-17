@@ -1,7 +1,125 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 // Import the real Basiq components
 import { AccountVerificationFormProvider } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormProvider';
 import { AccountVerificationFormStep1PreConsent } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormStep1PreConsent';
+import { useAccountVerificationForm } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormProvider';
+import { AccountVerificationFormStep3LoadingSteps } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormStep3LoadingSteps';
+import { AccountVerificationFormStep4SelectAccount } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormStep4SelectAccount';
+
+
+// Inner component that has access to Basiq context
+const BasiqFlowContent: React.FC<{
+  onSuccess: (data: any) => void;
+  onCancel: () => void;
+  userId: string;
+}> = ({ onSuccess, onCancel, userId }) => {
+  const {
+    goToConsent,
+    basiqConnection,
+    accountVerificationFormState,
+    updateAccountVerificationFormState,
+    hasCompletedForm,
+    createBasiqConnection
+  } = useAccountVerificationForm();
+
+  const [currentStep, setCurrentStep] = useState<'preConsent' | 'loading' | 'selectAccount'>('preConsent');
+
+  // Set user in the form state
+  useEffect(() => {
+    updateAccountVerificationFormState({
+      user: { id: userId }
+    });
+  }, [userId, updateAccountVerificationFormState]);
+
+  // Check URL for jobId when component mounts (user returning from Basiq consent)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const jobId = urlParams.get('jobIds');
+    
+    if (jobId) {
+      // User is returning from Basiq consent UI
+      setCurrentStep('loading');
+      createBasiqConnection();
+    }
+  }, [createBasiqConnection]);
+
+  // Monitor Basiq connection status
+  useEffect(() => {
+    if (basiqConnection?.completed && !basiqConnection?.error) {
+      setCurrentStep('selectAccount');
+    } else if (basiqConnection?.error) {
+      console.error('Basiq connection error:', basiqConnection.error);
+      onCancel();
+    }
+  }, [basiqConnection, onCancel]);
+
+  // Monitor form completion
+  useEffect(() => {
+    if (hasCompletedForm && accountVerificationFormState?.selectedAccount) {
+      // Basiq flow is complete, pass data back to parent
+      const accountData = {
+        basiqUserId: accountVerificationFormState.user?.id,
+        institutionName: accountVerificationFormState.selectedInstitution?.name,
+        accountId: accountVerificationFormState.selectedAccount?.id,
+        accountName: accountVerificationFormState.selectedAccount?.displayName,
+        connectionDate: new Date().toISOString(),
+        jobId: basiqConnection?.jobId
+      };
+      
+      onSuccess(accountData);
+    }
+  }, [hasCompletedForm, accountVerificationFormState, basiqConnection, onSuccess]);
+
+  if (currentStep === 'preConsent') {
+    return (
+      <div className="p-4">
+        <AccountVerificationFormStep1PreConsent />
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={onCancel}
+            className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentStep === 'loading') {
+    return (
+      <div className="p-4">
+        <AccountVerificationFormStep3LoadingSteps />
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={onCancel}
+            className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentStep === 'selectAccount') {
+    return (
+      <div className="p-4">
+        <AccountVerificationFormStep4SelectAccount />
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={onCancel}
+            className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
 
 interface BasiqConnectionWrapperProps {
   isOpen: boolean;
@@ -159,36 +277,11 @@ const BasiqConnectionWrapper: React.FC<BasiqConnectionWrapperProps> = ({
           {/* STEP 2: REAL BASIQ FLOW */}
           {step === 'basiq' && (
             <AccountVerificationFormProvider>
-              <div className="p-4">
-                <AccountVerificationFormStep1PreConsent />
-                
-                {/* You'll need to add more Basiq steps here */}
-                {/* For now, we'll simulate the flow */}
-                <div className="mt-6 flex space-x-4">
-                  <button
-                    onClick={handleBasiqCancel}
-                    className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Simulate successful connection for now
-                      const mockData = {
-                        basiqUserId: 'basiq_user_' + userId,
-                        institutionName: 'Demo Bank',
-                        accountIds: ['acc_1', 'acc_2'],
-                        accountName: 'Savings Account',
-                        connectionDate: new Date().toISOString()
-                      };
-                      handleBasiqSuccess(mockData);
-                    }}
-                    className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    Simulate Success
-                  </button>
-                </div>
-              </div>
+              <BasiqFlowContent
+                onSuccess={handleBasiqSuccess}
+                onCancel={handleBasiqCancel}
+                userId={userId}
+              />
             </AccountVerificationFormProvider>
           )}
 

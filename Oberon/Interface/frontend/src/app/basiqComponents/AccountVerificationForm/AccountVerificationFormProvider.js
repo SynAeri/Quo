@@ -1,9 +1,9 @@
 "use client";
 
 import toast from 'react-hot-toast';
-import { useEffect, useState, createContext, useContext } from 'react';
+import { useEffect, useState, createContext, useContext, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getClientToken } from '../../../../clientAuthentication';
+import { getTokenAndBasiqUserId } from '../../../../clientAuthentication';
 import { axios } from '../../../../utils/axios';
 import { FORM_COMPONENTS } from './AccountVerificationForm';
 
@@ -52,17 +52,19 @@ export function AccountVerificationFormProvider({ children }) {
   const router = useRouter();
 
   const [accountVerificationFormState, setAccountVerificationFormState] = useState(initialAccountVerificationFormState);
-  const updateAccountVerificationFormState = newState => {
+
+  const updateAccountVerificationFormState = useCallback((newState) => {
     setAccountVerificationFormState(oldState => ({ ...oldState, ...newState }));
-  };
-  const [hasCompletedForm, setHasCompletedForm] = useState(false);
+  }, []);  const [hasCompletedForm, setHasCompletedForm] = useState(false);
 
   // State for managing which step of the form to display
   const [currentStep, setCurrentStep] = useState(0);
   const totalSteps = FORM_COMPONENTS.length;
-  const goBack = () => setCurrentStep(step => (step === 0 ? 0 : step - 1));
-  const goToStep = step => setCurrentStep(step);
-  const goForward = () => setCurrentStep(step => (step === totalSteps - 1 ? totalSteps - 1 : currentStep + 1));
+
+  const goBack = useCallback(() => setCurrentStep(step => (step === 0 ? 0 : step - 1)), []);
+  const goToStep = useCallback((step) => setCurrentStep(step), []);
+  const goForward = useCallback(() => setCurrentStep(step => (step === totalSteps - 1 ? totalSteps - 1 : currentStep + 1)), [currentStep, totalSteps]);
+
 
   // State for managing the basiq connection
   const { basiqConnection, createBasiqConnection, deleteBasiqConnection } = useBasiqConnection({
@@ -71,13 +73,13 @@ export function AccountVerificationFormProvider({ children }) {
     selectedInstitution: accountVerificationFormState.selectedInstitution,
   });
 
-  function resetState() {
-    setAccountVerificationFormState(initialAccountVerificationFormState);
-    setCurrentStep(0);
-    setCancelling(false);
-    setHasCompletedForm(false);
-    sessionStorage.clear()
-  }
+const resetState = useCallback(() => {
+  setAccountVerificationFormState(initialAccountVerificationFormState);
+  setCurrentStep(0);
+  setCancelling(false);
+  setHasCompletedForm(false);
+  sessionStorage.clear()
+}, []);
 
   // State for managing cancelling the account verification form
   const [cancelling, setCancelling] = useState(false);
@@ -104,7 +106,7 @@ export function AccountVerificationFormProvider({ children }) {
     try {
       // Delete user at end of process when not in prod to clean up test data
       // You can also enable this for production if you do not wish to maintain the user bucket or connection e.g. for a once off check 
-      if (process.env.NODE_ENV !== 'production') {
+ if (process.env.NODE_ENV !== 'production') {
         await deleteUser()
       }
       setHasCompletedForm(true);
@@ -116,12 +118,25 @@ export function AccountVerificationFormProvider({ children }) {
     }
   }
 
-  // Redirect to the external Basiq Consent UI
-  async function goToConsent(action = null) {
-    let userId = sessionStorage.getItem("userId")
-    const token = await getClientToken(userId);
-    window.location = (`https://consent.basiq.io/home?userId=${userId}&token=${token}&action=${action}`);
+const goToConsent = useCallback(async (action = null) => {
+  try {
+    console.log("🔍 Getting token and Basiq user ID...");
+    
+    const { token, basiqUserId } = await getTokenAndBasiqUserId();
+    
+    console.log("✅ Got token and Basiq user ID:", { token: token ? 'present' : 'missing', basiqUserId });
+    
+    // Add redirect URL parameter
+    const redirectUrl = encodeURIComponent(`${window.location.origin}/`);
+    const consentUrl = `https://consent.basiq.io/home?userId=${basiqUserId}&token=${token}&redirect_uri=${redirectUrl}${action ? `&action=${action}` : ''}`;
+    
+    console.log("🔗 Redirecting to:", consentUrl);
+    window.location = consentUrl;
+  } catch (error) {
+    console.error("❌ Error getting token:", error);
+    alert("Failed to get authentication token. Please try again.");
   }
+}, []);
 
   const contextValue = {
     currentStep,

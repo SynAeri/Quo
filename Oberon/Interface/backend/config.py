@@ -1,6 +1,7 @@
 # Settings + Configurations
 
 import os
+from os.path import abspath
 DATABASE_Path = "quo_datab.db"
 
 
@@ -18,3 +19,4 @@ SECRET_KEY = ""
 def get_db_path():
     # Absolute path to database
     return os.path,abspath(DATABASE_Path)
+

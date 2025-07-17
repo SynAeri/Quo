@@ -204,23 +204,16 @@ def get_all_users():
 
 def get_database_stats():
     """Get database statistics"""
-    # This function returns information about the database
-    # Used by debug endpoints
-    
     conn = get_connection()
     cursor = conn.cursor()
     
     try:
         # total user count
         cursor.execute("SELECT COUNT(*) FROM users")
-        # SQL: "Count how many rows are in users table"
-        
         user_count = cursor.fetchone()[0]
-        # fetchone() returns tuple like (5,)
-        # [0] gets the actual number from the tuple
         
         # count connections
-        cursor.execute("SELECT COUNT(*) FROM basiq_connections")
+        cursor.execute("SELECT COUNT(*) FROM basiq_connection")
         connection_count = cursor.fetchone()[0]
         
         return {
@@ -228,10 +221,172 @@ def get_database_stats():
             "total_connections": connection_count,
             "database_file": DATABASE_P
         }
-        # Return statistics dictionary
         
     except sqlite3.Error as e:
         return {"error": f"Database error: {e}"}
     finally:
         conn.close()
+
+# ==================================================== #
+#                  User Database Functions             #
+# ==================================================== #
+def update_user_basiq_id(user_id: str, basiq_user_id: str):
+    """Store the Basiq user ID for a user after creating their Basiq account"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if user already has a Basiq connection record
+        cursor.execute("SELECT id FROM basiq_connection WHERE user_id = ?", (user_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing record
+            cursor.execute("""
+                UPDATE basiq_connection 
+                SET basiq_user_id = ? 
+                WHERE user_id = ?
+            """, (basiq_user_id, user_id))
+        else:
+            # Create new record
+            cursor.execute("""
+                INSERT INTO basiq_connection (user_id, basiq_user_id) 
+                VALUES (?, ?)
+            """, (user_id, basiq_user_id))
+        
+        conn.commit()
+        return {"success": True}
+        
+    except sqlite3.Error as e:
+        return {"error": f"Database error: {e}"}
+    finally:
+        conn.close()
+
+def get_user_by_id(user_id: str):
+    """Get user data including Basiq user ID"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                u.id, u.email, u.first_name, u.last_name,
+                bc.basiq_user_id, bc.institution_name, bc.connection_status
+            FROM users u
+            LEFT JOIN basiq_connection bc ON u.id = bc.user_id
+            WHERE u.id = ?
+        """, (user_id,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            return {"error": "User not found"}
+        
+        return {
+            "id": user[0],
+            "email": user[1],
+            "first_name": user[2],
+            "last_name": user[3],
+            "basiq_user_id": user[4],
+            "institution_name": user[5],
+            "connection_status": user[6]
+        }
+        
+    except sqlite3.Error as e:
+        return {"error": f"Database error: {e}"}
+    finally:
+        conn.close()
+
+def save_basiq_connection(user_id: int, basiq_user_id: str, institution_name: str, account_ids: list):
+    """Save bank connection details after successful Basiq connection"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Convert account_ids list to string for storage
+        account_ids_str = ','.join(account_ids) if account_ids else ''
+        
+        # Check if connection already exists
+        cursor.execute("SELECT id FROM basiq_connection WHERE user_id = ?", (user_id,))
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing connection
+            cursor.execute("""
+                UPDATE basiq_connection 
+                SET basiq_user_id = ?, institution_name = ?, account_ids = ?, 
+                    connection_status = 'active', connected_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            """, (basiq_user_id, institution_name, account_ids_str, user_id))
+        else:
+            # Create new connection
+            cursor.execute("""
+                INSERT INTO basiq_connection 
+                (user_id, basiq_user_id, institution_name, account_ids, connection_status) 
+                VALUES (?, ?, ?, ?, 'active')
+            """, (user_id, basiq_user_id, institution_name, account_ids_str))
+        
+        conn.commit()
+        return {"success": True}
+        
+    except sqlite3.Error as e:
+        return {"error": f"Database error: {e}"}
+    finally:
+        conn.close()
+
+def get_user_basiq_connections(user_id: int):
+    """Get all Basiq connections for a user"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT basiq_user_id, institution_name, account_ids, 
+                   connection_status, connected_at
+            FROM basiq_connection 
+            WHERE user_id = ? AND connection_status = 'active'
+        """, (user_id,))
+        
+        connections = cursor.fetchall()
+        
+        connection_list = []
+        for conn_data in connections:
+            account_ids = conn_data[2].split(',') if conn_data[2] else []
+            connection_list.append({
+                "basiq_user_id": conn_data[0],
+                "institution_name": conn_data[1],
+                "account_ids": account_ids,
+                "connection_status": conn_data[3],
+                "connected_at": conn_data[4]
+            })
+        
+        return {"connections": connection_list}
+        
+    except sqlite3.Error as e:
+        return {"error": f"Database error: {e}"}
+    finally:
+        conn.close()
+
+def has_basiq_user(user_id: int):
+    """Check if user already has a Basiq account"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT basiq_user_id FROM basiq_connection 
+            WHERE user_id = ? AND basiq_user_id IS NOT NULL
+        """, (user_id,))
+        
+        result = cursor.fetchone()
+        return {
+            "has_basiq_user": bool(result),
+            "basiq_user_id": result[0] if result else None
+        }
+        
+    except sqlite3.Error as e:
+        return {"error": f"Database error: {e}"}
+    finally:
+        conn.close()
+
 

@@ -8,16 +8,32 @@ import { getBasiqAuthorizationHeader } from '../clientAuthentication';
  * https://axios-http.com/docs/instance
  * https://axios-http.com/docs/interceptors
  */
-export const axios = Axios.create();
+
+export const axios = Axios.create({
+  // Add base URL for your FastAPI backend
+  baseURL: process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+    ? 'http://127.0.0.1:8000' 
+    : ''
+});
 
 // Intercept all requests made to the Basiq API and insert a "Authorization" header and other common headers
 axios.interceptors.request.use(async function (request) {
   const { url, headers } = request;
+  
+  // For Basiq API calls, add Basiq auth headers
   if (url?.startsWith('https://au-api.basiq.io/')) {
     headers.Authorization = await getBasiqAuthorizationHeader();
     headers.Accept = 'application/json';
     headers['Content-Type'] = 'application/json';
   }
+  
+  // For your backend API calls, add your app's auth headers if needed
+  if (url?.startsWith('/api/')) {
+    headers['Content-Type'] = 'application/json';
+    // Add your auth token if needed:
+    // headers.Authorization = `Bearer ${localStorage.getItem('authToken')}`;
+  }
+  
   return request;
 });
 
@@ -29,7 +45,12 @@ axios.interceptors.response.use(
   },
   // Any status codes that falls outside the range of 2xx cause this function to trigger
   function (error) {
-    if (error.response.config.url.startsWith('https://au-api.basiq.io/') && error.response.status === 403) {
+    // Check if error.response exists before accessing its properties
+    if (error.response && 
+        error.response.config && 
+        error.response.config.url.startsWith('https://au-api.basiq.io/') && 
+        error.response.status === 403) {
+      
       if (process.env.NODE_ENV !== 'production') {
         // When in development mode, show a detailed error
         const details = error.response.data.data?.[0];
@@ -41,7 +62,9 @@ axios.interceptors.response.use(
         );
       }
     }
-
+    
+    // For all other errors (including network errors, validation errors, etc.)
     return Promise.reject(error);
   }
 );
+

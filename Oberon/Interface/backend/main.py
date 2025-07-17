@@ -1,4 +1,5 @@
 # Handling API endpoints + Quo setup
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException # FastAPI: Framework, Exception: error responses for frontend
 
@@ -20,6 +21,7 @@ from models import SignupRequest, LoginRequest, BasiqConnectionReq, BasiqTokenRe
 # Quo initialisation
 app = FastAPI(title=config.API_TITLE, version=config.API_VERSION) # Better than hardcoding, incase future edits refer to config.py
 
+load_dotenv()
 # ==================================================== #
 #                  CORS setup                          #
 # ==================================================== #
@@ -43,7 +45,7 @@ def startup():
     
     print("Financial thingy working..")
 
-    database.init_database # referencing a method from database
+    database.init_database() # referencing a method from database
     # Creates database tables
 
 # ==================================================== #
@@ -84,6 +86,24 @@ async def signup(user_data: SignupRequest): # user data is auto validated by Sig
         else:
             raise HTTPException(status_code=500, detail=result["error"]) # raise HTTPException 500 for bad internal request to frontend
 
+    # NOW: Creation of Basiq user
+    try:
+        basiq_user = await create_basiq_user(
+            email=user_data.email,
+            firstName=user_data.firstName,
+            lastName=user_data.lastName
+        )
+        
+        # Storing basiq userID in databse
+        database.update_user_basiq_id(result["user_id"], basiq_user["id"])
+
+        print(f" Created Basiq User: {basiq_user['id']}")
+
+    except Exception as e:
+        print(f"⚠️ Failed to create Basiq user: {e}")
+        # You might want to delete the app user or handle this error
+        # For now, we'll continue without Basiq user
+
     # Return Success otherwise
 
     return {
@@ -99,7 +119,60 @@ async def signup(user_data: SignupRequest): # user data is auto validated by Sig
     }            
     # Gets sent to frotnend via return
 
-# Login endpoint
+# New function to create Basiq user
+async def create_basiq_user(email: str, firstName: str, lastName: str):
+    basiq_api_key = os.getenv("BASIQ_API_KEY")
+    
+    if not basiq_api_key:
+        raise Exception("Basiq API key not configured")
+    
+    # Use the same format as your working code
+    auth_string = basiq_api_key
+       
+    # First get a SERVER_ACCESS token - COPY YOUR WORKING HEADERS
+    token_response = requests.post(
+        "https://au-api.basiq.io/token",
+        headers={
+            "accept": "application/json",
+            "content-type": "application/x-www-form-urlencoded",  # CHANGE THIS!
+            "Authorization": f"Basic {auth_string}",
+            "basiq-version": "3.0"  # ADD THIS!
+        },
+        data={  # CHANGE FROM json= TO data=
+            "scope": "SERVER_ACCESS"
+        }
+    )
+    
+    if token_response.status_code != 200:
+        print(f"❌ Server token error: {token_response.status_code} - {token_response.text}")
+        raise Exception("Failed to get Basiq server token")
+    
+    server_token = token_response.json()["access_token"]
+    print(f"✅ Got server token")
+    
+    # Now create the Basiq user
+    user_response = requests.post(
+        "https://au-api.basiq.io/users",
+        headers={
+            "accept": "application/json",
+            "content-type": "application/json",
+            "authorization": f"Bearer {server_token}",
+            "basiq-version": "3.0"  # ADD THIS HERE TOO
+        },
+        json={
+            "email": email,
+            "firstName": firstName,
+            "lastName": lastName
+        }
+    )
+    
+    if user_response.status_code != 201:
+        print(f"❌ User creation error: {user_response.status_code} - {user_response.text}")
+        raise Exception(f"Failed to create Basiq user: {user_response.text}")
+    
+    print(f"✅ Created Basiq user successfully")
+    return user_response.json()# Login endpoint
+
 @app.post("/api/auth/login")
 async def login(credentials: LoginRequest): # credentials is auto validated by LoginRequest method in model
     
@@ -130,8 +203,13 @@ async def login(credentials: LoginRequest): # credentials is auto validated by L
     }
 
 # Verification token validation to add later
+@app.get("/api/auth/verify")
 async def verify_token():
-    pass
+    # For now, return a simple success response
+    return {
+        "valid": True,
+        "message": "Token verification endpoint working"
+    }
 
 # ==================================================== #
 #                  Debugging Endpoints                 #
@@ -164,48 +242,45 @@ async def saveBasiqConnection(connection_data: BasiqConnectionReq):
 
 @app.get("/api/client-token")
 async def get_client_token(userId: str):
-    """
-    Generate Basiq CLIENT_ACCESS token for frontend
-    """
     try:
-        # Get your Basiq API key from environment variables
+        user_data = database.get_user_by_id(userId)
+
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        basiq_user_id = user_data.get("basiq_user_id")
+
+        if not basiq_user_id:
+            raise HTTPException(status_code=400, detail="User has no Basiq account")
+        
         basiq_api_key = os.getenv("BASIQ_API_KEY")
-        
-        if not basiq_api_key:
-            raise HTTPException(status_code=500, detail="Basiq API key not configured")
-        
-        print(f"Generating Basiq token for user: {userId}")
-        
-        # Encode API key for Basic auth
-        auth_string = f"{basiq_api_key}:"
-        encoded_auth = base64.b64encode(auth_string.encode()).decode()
-        
-        # Call Basiq token endpoint
+        auth_string = basiq_api_key
+                
         response = requests.post(
             "https://au-api.basiq.io/token",
             headers={
-                "Authorization": f"Basic {encoded_auth}",
-                "Content-Type": "application/json"
+                "accept": "application/json",
+                "content-type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {auth_string}",
+                "basiq-version": "3.0"
             },
-            json={
+            data={  # CHANGE FROM json= TO data=
                 "scope": "CLIENT_ACCESS",
-                "userId": userId
+                "userId": basiq_user_id
             }
         )
         
         if response.status_code != 200:
-            print(f"Basiq API error: {response.status_code} - {response.text}")
+            print(f"Token generation error: {response.text}")
             raise HTTPException(status_code=500, detail="Failed to get Basiq token")
         
         token_data = response.json()
-        print(f"Successfully generated token for user: {userId}")
         
-        # Return just the access token (as expected by your frontend)
-        return token_data["access_token"]
+        return {
+            "access_token": token_data["access_token"],
+            "basiq_user_id": basiq_user_id
+        }
         
-    except requests.RequestException as e:
-        print(f"Network error getting Basiq token: {e}")
-        raise HTTPException(status_code=500, detail="Network error contacting Basiq")
     except Exception as e:
         print(f"Error getting Basiq token: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate client token")
