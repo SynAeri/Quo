@@ -1,76 +1,102 @@
 import React, { useState, useEffect } from 'react';
-// Import the real Basiq components
 import { AccountVerificationFormProvider } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormProvider';
 import { AccountVerificationFormStep1PreConsent } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormStep1PreConsent';
 import { useAccountVerificationForm } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormProvider';
 import { AccountVerificationFormStep3LoadingSteps } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormStep3LoadingSteps';
 import { AccountVerificationFormStep4SelectAccount } from '../basiqComponents/AccountVerificationForm/AccountVerificationFormStep4SelectAccount';
 
-
 // Inner component that has access to Basiq context
-const BasiqFlowContent: React.FC<{
-  onSuccess: (data: any) => void;
-  onCancel: () => void;
-  userId: string;
-}> = ({ onSuccess, onCancel, userId }) => {
+const BasiqFlowContent = ({ onSuccess, onCancel, userId }) => {
   const {
     goToConsent,
     basiqConnection,
     accountVerificationFormState,
     updateAccountVerificationFormState,
     hasCompletedForm,
-    createBasiqConnection
+    createBasiqConnection,
+    goToStep,
+    currentStep,
+    goForward
   } = useAccountVerificationForm();
 
-  const [currentStep, setCurrentStep] = useState<'preConsent' | 'loading' | 'selectAccount'>('preConsent');
+  const [internalStep, setInternalStep] = useState('preConsent');
 
-  // Set user in the form state
+  // Set user in the form state and session storage
   useEffect(() => {
     updateAccountVerificationFormState({
       user: { id: userId }
     });
+    sessionStorage.setItem("userId", userId);
   }, [userId, updateAccountVerificationFormState]);
 
-  // Check URL for jobId when component mounts (user returning from Basiq consent)
+  // Check URL for jobId when component mounts or URL changes
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const jobId = urlParams.get('jobIds');
+    const checkForReturn = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const jobId = urlParams.get('jobIds');
+      
+      if (jobId) {
+        // User is returning from Basiq consent UI
+        console.log('User returned from Basiq with jobId:', jobId);
+        setInternalStep('loading');
+        
+        // Move to step 2 (AccountVerificationFormStep3LoadingSteps)
+        goToStep(2);
+        
+        // Clean up URL
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    };
+
+    // Check immediately
+    checkForReturn();
+
+    // Also listen for popstate events (browser back/forward)
+    window.addEventListener('popstate', checkForReturn);
     
-    if (jobId) {
-      // User is returning from Basiq consent UI
-      setCurrentStep('loading');
-      createBasiqConnection();
+    return () => {
+      window.removeEventListener('popstate', checkForReturn);
+    };
+  }, [goToStep]);
+
+  // Monitor the actual form step from the provider
+  useEffect(() => {
+    // Map the provider's currentStep to our internal step
+    if (currentStep === 0 || currentStep === 1) {
+      setInternalStep('preConsent');
+    } else if (currentStep === 2) {
+      setInternalStep('loading');
+    } else if (currentStep === 3) {
+      setInternalStep('selectAccount');
+    } else if (currentStep === 4) {
+      // Summary step - form is complete
+      if (accountVerificationFormState?.selectedAccount) {
+        const accountData = {
+          basiqUserId: accountVerificationFormState.user?.id,
+          institutionName: accountVerificationFormState.selectedInstitution?.name,
+          accountId: accountVerificationFormState.selectedAccount?.id,
+          accountName: accountVerificationFormState.selectedAccount?.name,
+          accountBalance: accountVerificationFormState.selectedAccount?.balance,
+          accountNumber: accountVerificationFormState.selectedAccount?.accountNo,
+          connectionDate: new Date().toISOString(),
+          jobId: basiqConnection?.jobId
+        };
+        
+        onSuccess(accountData);
+      }
     }
-  }, [createBasiqConnection]);
+  }, [currentStep, accountVerificationFormState, basiqConnection, onSuccess]);
 
   // Monitor Basiq connection status
   useEffect(() => {
-    if (basiqConnection?.completed && !basiqConnection?.error) {
-      setCurrentStep('selectAccount');
-    } else if (basiqConnection?.error) {
+    if (basiqConnection?.error) {
       console.error('Basiq connection error:', basiqConnection.error);
-      onCancel();
+      // You might want to show an error state here instead of canceling
     }
-  }, [basiqConnection, onCancel]);
+  }, [basiqConnection]);
 
-  // Monitor form completion
-  useEffect(() => {
-    if (hasCompletedForm && accountVerificationFormState?.selectedAccount) {
-      // Basiq flow is complete, pass data back to parent
-      const accountData = {
-        basiqUserId: accountVerificationFormState.user?.id,
-        institutionName: accountVerificationFormState.selectedInstitution?.name,
-        accountId: accountVerificationFormState.selectedAccount?.id,
-        accountName: accountVerificationFormState.selectedAccount?.displayName,
-        connectionDate: new Date().toISOString(),
-        jobId: basiqConnection?.jobId
-      };
-      
-      onSuccess(accountData);
-    }
-  }, [hasCompletedForm, accountVerificationFormState, basiqConnection, onSuccess]);
-
-  if (currentStep === 'preConsent') {
+  if (internalStep === 'preConsent') {
     return (
       <div className="p-4">
         <AccountVerificationFormStep1PreConsent />
@@ -86,7 +112,7 @@ const BasiqFlowContent: React.FC<{
     );
   }
 
-  if (currentStep === 'loading') {
+  if (internalStep === 'loading') {
     return (
       <div className="p-4">
         <AccountVerificationFormStep3LoadingSteps />
@@ -102,7 +128,7 @@ const BasiqFlowContent: React.FC<{
     );
   }
 
-  if (currentStep === 'selectAccount') {
+  if (internalStep === 'selectAccount') {
     return (
       <div className="p-4">
         <AccountVerificationFormStep4SelectAccount />
@@ -121,23 +147,26 @@ const BasiqFlowContent: React.FC<{
   return null;
 };
 
-interface BasiqConnectionWrapperProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: (accountData: any) => void;
-  userId: string;
-}
-
-const BasiqConnectionWrapper: React.FC<BasiqConnectionWrapperProps> = ({
+const BasiqConnectionWrapper = ({
   isOpen,
   onClose,
   onSuccess,
   userId
 }) => {
-  // Updated state to handle real Basiq flow
-  const [step, setStep] = useState<'intro' | 'basiq' | 'success'>('intro');
+  const [step, setStep] = useState('intro');
   const [loading, setLoading] = useState(false);
-  const [connectedAccount, setConnectedAccount] = useState<any>(null);
+  const [connectedAccount, setConnectedAccount] = useState(null);
+
+  // Check if we're returning from Basiq on mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const jobId = urlParams.get('jobIds');
+    
+    if (jobId && isOpen) {
+      // Skip intro and go straight to Basiq flow
+      setStep('basiq');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -147,7 +176,7 @@ const BasiqConnectionWrapper: React.FC<BasiqConnectionWrapperProps> = ({
   };
 
   // Handle successful Basiq connection
-  const handleBasiqSuccess = async (accountData: any) => {
+  const handleBasiqSuccess = async (accountData) => {
     console.log('🎉 Basiq connection successful:', accountData);
     setConnectedAccount(accountData);
     setStep('success');
@@ -164,7 +193,7 @@ const BasiqConnectionWrapper: React.FC<BasiqConnectionWrapperProps> = ({
           userId: userId,
           basiqUserId: accountData.basiqUserId,
           institutionName: accountData.institutionName,
-          accountIds: accountData.accountIds || [],
+          accountId: accountData.accountId,
           connectionData: accountData
         })
       });
@@ -184,6 +213,8 @@ const BasiqConnectionWrapper: React.FC<BasiqConnectionWrapperProps> = ({
 
   // Handle Basiq flow cancellation
   const handleBasiqCancel = () => {
+    // Clear session storage
+    sessionStorage.removeItem("userId");
     setStep('intro');
   };
 
@@ -192,6 +223,7 @@ const BasiqConnectionWrapper: React.FC<BasiqConnectionWrapperProps> = ({
     setStep('intro');
     setLoading(false);
     setConnectedAccount(null);
+    sessionStorage.removeItem("userId");
     onClose();
   };
 

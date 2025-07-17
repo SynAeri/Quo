@@ -1,11 +1,13 @@
 # Handling API endpoints + Quo setup
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException # FastAPI: Framework, Exception: error responses for frontend
+from fastapi import FastAPI, HTTPException, Header # FastAPI: Framework, Exception: error responses for frontend
 
 from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic.version import version_info # Basic communication
+
+from typing import Optional
 
 
 # Basiq Token Gen
@@ -204,12 +206,51 @@ async def login(credentials: LoginRequest): # credentials is auto validated by L
 
 # Verification token validation to add later
 @app.get("/api/auth/verify")
-async def verify_token():
-    # For now, return a simple success response
-    return {
-        "valid": True,
-        "message": "Token verification endpoint working"
-    }
+async def verify_token(authorization: Optional[str] = Header(None)):
+    """
+    Verify JWT token and return user data
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
+    
+    # Extract token from "Bearer <token>" format
+    try:
+        token_parts = authorization.split(" ")
+        if len(token_parts) != 2 or token_parts[0] != "Bearer":
+            raise HTTPException(status_code=401, detail="Invalid authorization format")
+        
+        token = token_parts[1]
+        
+        # For now, extract user_id from simple token format "jwt_token_{user_id}"
+        # In production, you should use proper JWT validation
+        if not token.startswith("jwt_token_"):
+            raise HTTPException(status_code=401, detail="Invalid token format")
+        
+        user_id = token.replace("jwt_token_", "")
+        
+        # Get user data from database
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+        # Return user data in the format the frontend expects
+        return {
+            "valid": True,
+            "user": {
+                "id": str(user_data["user_id"]),
+                "email": user_data["email"],
+                "firstName": user_data["first_name"],
+                "lastName": user_data["last_name"]
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Token verification error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 # ==================================================== #
 #                  Debugging Endpoints                 #
@@ -224,6 +265,40 @@ async def get_all_users():
         "users": result["users"]
     }
 
+# Also add this helper function to database.py if it doesn't exist:
+def get_user_by_id(user_id):
+    """Get user by ID"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Convert string ID to int if needed
+        user_id_int = int(user_id) if isinstance(user_id, str) else user_id
+        
+        cursor.execute("""
+            SELECT id, email, first_name, last_name, basiq_user_id
+            FROM users 
+            WHERE id = ?
+        """, (user_id_int,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            return {"error": "User not found"}
+        
+        return {
+            "user_id": user[0],
+            "email": user[1],
+            "first_name": user[2],
+            "last_name": user[3],
+            "basiq_user_id": user[4]
+        }
+        
+    except Exception as e:
+        print(f"Database error: {e}")
+        return {"error": str(e)}
+    finally:
+        conn.close()
 
 # ==================================================== #
 #                  Basiq Endpoint                      #

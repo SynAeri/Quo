@@ -120,18 +120,10 @@ const resetState = useCallback(() => {
 
 const goToConsent = useCallback(async (action = null) => {
   try {
-    console.log("🔍 Getting token and Basiq user ID...");
-    
     const { token, basiqUserId } = await getTokenAndBasiqUserId();
     
-    console.log("✅ Got token and Basiq user ID:", { token: token ? 'present' : 'missing', basiqUserId });
-    
-    // Add redirect URL parameter
-    const redirectUrl = encodeURIComponent(`${window.location.origin}/`);
-    const consentUrl = `https://consent.basiq.io/home?userId=${basiqUserId}&token=${token}&redirect_uri=${redirectUrl}${action ? `&action=${action}` : ''}`;
-    
-    console.log("🔗 Redirecting to:", consentUrl);
-    window.location = consentUrl;
+    // Simple redirect without redirect_uri - let Basiq handle the return
+    window.location = `https://consent.basiq.io/home?userId=${basiqUserId}&token=${token}${action ? `&action=${action}` : ''}`;
   } catch (error) {
     console.error("❌ Error getting token:", error);
     alert("Failed to get authentication token. Please try again.");

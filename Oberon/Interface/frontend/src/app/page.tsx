@@ -8,6 +8,7 @@ import Typewriter from "typewriter-effect";
 import ButtonMain from "./components/mainButtons";
 import LoginSignupModal from './basiqComponents/modal';
 import BasiqConnectionWrapper from './components/BasiqConnectionWrapper';
+import BasiqDebugComponent from './components/BasicDebugComponent'; // Add this import
 
 interface User {
   id: string;
@@ -37,16 +38,41 @@ export default function Home() {
           });
           
           if (response.ok) {
-            const userData = await response.json();
-            setUser(userData.user);
-            sessionStorage.setItem('userId', userData.user.id); // Add this line
+            const data = await response.json();
+            console.log('Auth verification response:', data); // Debug log
+            
+            // Handle different response structures
+            let userData: User | null = null;
+            
+            // Check if user data is directly in response
+            if (data.id && data.email) {
+              userData = data as User;
+            } 
+            // Check if user data is nested under 'user' property
+            else if (data.user && data.user.id) {
+              userData = data.user as User;
+            }
+            // Check if user data is nested under 'data' property
+            else if (data.data && data.data.id) {
+              userData = data.data as User;
+            }
+            
+            if (userData) {
+              setUser(userData);
+              sessionStorage.setItem('userId', userData.id);
+            } else {
+              console.error('Invalid user data structure:', data);
+              localStorage.removeItem('authToken');
+            }
           } else {
             // Token is invalid, remove 
             localStorage.removeItem('authToken');
+            sessionStorage.removeItem('userId');
           }
         } catch (error) {
           console.error('Auth verification failed:', error);
           localStorage.removeItem('authToken');
+          sessionStorage.removeItem('userId');
         }
       }
       setIsLoading(false);
@@ -57,21 +83,28 @@ export default function Home() {
 
   const handleLoginSuccess = (userData: User) => {
     setUser(userData);
-    sessionStorage.setItem('userId', userData.id); // Add this line
+    sessionStorage.setItem('userId', userData.id);
     console.log('User logged in successfully:', userData);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
+    sessionStorage.removeItem('userId');
     setUser(null);
   };
 
   const initializeBasiqConnection = () => {
+    if (!user || !user.id) {
+      console.error('Cannot open Basiq connection: User ID is missing');
+      return;
+    }
     setIsBasiqModalOpen(true);
   };
 
   const handleBasiqSuccess = (accountData: any) => {
     console.log('Bank account connected successfully:', accountData);
+    // You might want to save this connection to your backend
+    // or update the UI to show connected accounts
   };
 
   if (isLoading) {
@@ -85,7 +118,7 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       <Head>
-        <title>{user ? `Welcome ${user.firstName} - Quo` : "Quo - Financial Risk Assessment"}</title>
+        <title>{user ? `Welcome ${user.firstName || 'User'} - Quo` : "Quo - Financial Risk Assessment"}</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -95,7 +128,9 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex justify-between items-center">
               <div className="flex items-center">
-                <span className="text-lg text-gray-700">Welcome back, {user.firstName}!</span>
+                <span className="text-lg text-gray-700">
+                  Welcome back, {user.firstName || user.email}!
+                </span>
               </div>
               <div className="flex items-center space-x-4">
                 <button
@@ -130,7 +165,7 @@ export default function Home() {
                   <div className="striped-content">
                     {user ? (
                       <Typewriter options={{
-                        strings: `Welcome back ${user.firstName}! Ready to analyze your finances?`,
+                        strings: `Welcome back ${user.firstName || 'there'}! Ready to analyze your finances?`,
                         autoStart: true,
                         delay: 50,
                       }} />
@@ -186,7 +221,7 @@ export default function Home() {
       />
 
       {/* Basiq Connection Modal */}
-      {user && (
+      {user && user.id && (
         <BasiqConnectionWrapper
           isOpen={isBasiqModalOpen}
           onClose={() => setIsBasiqModalOpen(false)}
@@ -194,6 +229,9 @@ export default function Home() {
           userId={user.id}
         />
       )}
+      
+      {/* Debug Component - Only show in development */}
+      {process.env.NODE_ENV === 'development' && <BasiqDebugComponent />}
     </div>
   );
 };
