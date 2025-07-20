@@ -1,425 +1,181 @@
-import React, { useState, useEffect } from 'react';
-import { AccountVerificationFormProvider } from './AccountVerificationFormProvider';
-import { AccountVerificationFormStep1PreConsent } from './AccountVerificationFormStep1PreConsent';
+import { useState } from 'react';
+import { track } from '@vercel/analytics';
+import { useTernaryState } from '../utils/useTernaryState';
+import { Button } from '../Button';
+import { LoadingSpinner } from '../LoadingSpinner';
+import { AccountVerificationFormLearnMoreModal } from './AccountVerificationFormLearnMoreModal';
+// import { StepLogo } from './StepLogo';
+// import { StepHeading } from './StepHeading';
+// import { StepDescription } from './StepDescription';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
-import { AccountVerificationFormStep3LoadingSteps } from './AccountVerificationFormStep3LoadingSteps';
-import { AccountVerificationFormStep4SelectAccount } from './AccountVerificationFormStep4SelectAccount';
 
-// Inner component that has access to Basiq context
-const BasiqFlowContent = ({ onSuccess, onCancel, userId }) => {
-  const {
-    goToConsent,
-    basiqConnection,
-    accountVerificationFormState,
-    updateAccountVerificationFormState,
-    hasCompletedForm,
-    createBasiqConnection,
-    goToStep,
-    currentStep,
-    goForward,
-    finish
-  } = useAccountVerificationForm();
+export function AccountVerificationFormStep1PreConsent() {
+  const { goToConsent } = useAccountVerificationForm()
+  const [submitting, setSubmitting] = useState(false); // Initialize with true if needed
 
-  const [internalStep, setInternalStep] = useState('preConsent');
-  const [isReturningFromConsent, setIsReturningFromConsent] = useState(false);
+  // State for managing hiding/showing of the learn more model
+  const [isLearnMoreModalOpen, openLearnMoreModal, closeLearnMoreModal] = useTernaryState(false);
 
-  // Set user in the form state and session storage
-  useEffect(() => {
-    updateAccountVerificationFormState({
-      user: { id: userId }
-    });
-    sessionStorage.setItem("userId", userId);
-  }, [userId, updateAccountVerificationFormState]);
+  return (
+    <div className="flex flex-col flex-grow space-y-8 sm:space-y-12">
+      {/* STEP LOGO */}
+      {/* To help the user keep context of what product they're using, */}
+      {/* and what bank they're about to connect to. */}
 
-  // Check if we're returning from Basiq consent
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const jobId = urlParams.get('jobIds');
-    
-    if (jobId && !isReturningFromConsent) {
-      console.log('Detected return from Basiq consent with jobId:', jobId);
-      setIsReturningFromConsent(true);
-      
-      // Call createBasiqConnection to start the connection monitoring
-      // This will read the jobId from the URL and start polling
-      createBasiqConnection();
-      
-      // Skip directly to step 2 (loading step)
-      goToStep(2);
-    }
-  }, [goToStep, isReturningFromConsent, createBasiqConnection]);
+      <div className="flex flex-col justify-center flex-grow space-y-8">
+        <div className="space-y-3 sm:space-y-4">
 
-  // Monitor the actual form step from the provider
-  useEffect(() => {
-    console.log('Current step changed to:', currentStep);
-    
-    // Map the provider's currentStep to our internal step
-    if (currentStep === 0 || currentStep === 1) {
-      setInternalStep('preConsent');
-    } else if (currentStep === 2) {
-      setInternalStep('loading');
-    } else if (currentStep === 3) {
-      setInternalStep('selectAccount');
-    } else if (currentStep === 4) {
-      // Summary step - form is complete
-      setInternalStep('summary');
-    }
-  }, [currentStep]);
-
-  // Handle successful completion
-  useEffect(() => {
-    if (hasCompletedForm && accountVerificationFormState?.selectedAccount) {
-      const accountData = {
-        basiqUserId: accountVerificationFormState.user?.id,
-        institutionName: accountVerificationFormState.selectedInstitution?.name,
-        accountId: accountVerificationFormState.selectedAccount?.id,
-        accountName: accountVerificationFormState.selectedAccount?.name,
-        accountBalance: accountVerificationFormState.selectedAccount?.balance,
-        accountNumber: accountVerificationFormState.selectedAccount?.accountNo,
-        connectionDate: new Date().toISOString(),
-        jobId: basiqConnection?.jobId
-      };
-      
-      console.log('Form completed with data:', accountData);
-      onSuccess(accountData);
-    }
-  }, [hasCompletedForm, accountVerificationFormState, basiqConnection, onSuccess]);
-
-  // Monitor Basiq connection status
-  useEffect(() => {
-    console.log('Basiq connection state:', {
-      inProgress: basiqConnection?.inProgress,
-      completed: basiqConnection?.completed,
-      error: basiqConnection?.error,
-      jobId: basiqConnection?.jobId,
-      progress: basiqConnection?.progress,
-      stepNameInProgress: basiqConnection?.stepNameInProgress
-    });
-    
-    if (basiqConnection?.error) {
-      console.error('Basiq connection error:', basiqConnection.error);
-      // You might want to show an error state here instead of canceling
-    }
-  }, [basiqConnection]);
-
-  if (internalStep === 'preConsent') {
-    return (
-      <div className="p-4">
-        <AccountVerificationFormStep1PreConsent />
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={onCancel}
-            className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            Cancel
-          </button>
         </div>
-      </div>
-    );
-  }
 
-  if (internalStep === 'loading') {
-    return (
-      <div className="p-4">
-        <AccountVerificationFormStep3LoadingSteps />
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={onCancel}
-            className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
+        {/* PRE-CONSENT */}
+        {/* This section aims to build trust. It's super important to clearly state valid and truthful arguments
+        for why it's 100% secure to connect to their bank through the app. */}
+        <ul role="list" className="rounded-lg bg-neutral-subtle">
+          {/* Secure argument 1 */}
+          <li className="flex items-center px-4 py-3 rounded-lg sm:px-6 bg-gradient-to-tr from-primary-bold to-secondary-bold space-x-4">
+            <div className="flex flex-grow font-medium leading-snug text-white">
+              Bank grade 256-bit <br />
+              SSL encryption
+            </div>
 
-  if (internalStep === 'selectAccount') {
-    return (
-      <div className="p-4">
-        <AccountVerificationFormStep4SelectAccount />
-        <div className="mt-6 flex justify-center">
-          <button
-            onClick={onCancel}
-            className="bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (internalStep === 'summary') {
-    // Instead of returning null, we should show the summary component
-    // but we'll handle the finish action to trigger our success callback
-    return (
-      <div className="p-4">
-        {/* We'll render a custom summary since the original calls finish() which would close everything */}
-        <div className="flex flex-col space-y-8">
-          <div className="flex justify-center">
+            {/* Icon: shield-check (outline) */}
             <svg
-              className="w-16 h-16 text-green-600"
+              className="w-12 h-12 sm:w-14 sm:h-14 flex-no-shrink"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
+              viewBox="0 0 48 48"
             >
               <path
-                d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-                stroke="currentColor"
-                strokeWidth="1"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+                className="fill-current text-secondary-bold-lighter"
+                d="m41.236 11.969.968-.251a1 1 0 0 0-1.019-.748l.05.998ZM24 5.889l.667-.746a1 1 0 0 0-1.334 0l.667.745Zm-17.236 6.08.05-1a1 1 0 0 0-1.018.749l.968.25ZM24 41.243l-.25.968a1 1 0 0 0 .5 0l-.25-.968ZM41.185 10.97c-.392.02-.787.03-1.185.03v2c.431 0 .86-.011 1.286-.033l-.1-1.997ZM40 11a22.91 22.91 0 0 1-15.333-5.857l-1.334 1.49A24.911 24.911 0 0 0 40 13v-2ZM23.333 5.143A22.91 22.91 0 0 1 8 11v2a24.91 24.91 0 0 0 16.667-6.365l-1.334-1.49ZM8 11c-.398 0-.793-.01-1.185-.03l-.101 1.998c.426.022.855.032 1.286.032v-2Zm-2.204.719A25.043 25.043 0 0 0 5 18h2c0-1.998.255-3.935.732-5.781l-1.936-.501ZM5 18c0 11.65 7.968 21.437 18.75 24.212l.5-1.937C14.328 37.722 7 28.715 7 18H5Zm19.25 24.212C35.031 39.437 43 29.65 43 18h-2c0 10.715-7.329 19.722-17.25 22.275l.5 1.937ZM43 18c0-2.168-.276-4.274-.796-6.282l-1.936.501c.477 1.846.732 3.783.732 5.78h2Z"
               />
               <path
-                d="m9 12 2 2 4-4"
-                stroke="currentColor"
-                strokeWidth="1"
+                className="text-white stroke-current"
+                d="m18 24 4 4 8-8"
+                strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </svg>
-          </div>
-          
-          <div className="text-center">
-            <h3 className="text-xl font-semibold mb-2">Account Connected!</h3>
-            <p className="text-gray-600">
-              Your {accountVerificationFormState?.selectedAccount?.name} account has been successfully connected.
-            </p>
-          </div>
-          
-          {accountVerificationFormState?.selectedAccount && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="font-medium">{accountVerificationFormState.selectedAccount.name}</p>
-              <p className="text-sm text-gray-600">
-                Balance: ${accountVerificationFormState.selectedAccount.balance?.toFixed(2) || '0.00'}
-              </p>
+          </li>
+
+          {/* Secure argument 2 */}
+          <li className="flex items-center px-4 pt-3 sm:px-6">
+            <div className="flex items-center flex-grow pb-3 border-b border-neutral-dim">
+              <div className="flex flex-grow text-sm">
+                We never save your bank <br />
+                login credentials in the app
+              </div>
+
+              {/* Icon: key (outline) */}
+              <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14">
+                <svg
+                  className="w-8 h-8 sm:w-9 sm:h-9 flex-no-shrink"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 32 32"
+                >
+                  <path
+                    d="M20 9.333A2.667 2.667 0 0 1 22.667 12M28 12a8 8 0 0 1-10.324 7.657l-3.01 3.01H12v2.666H9.333V28h-4A1.333 1.333 0 0 1 4 26.667v-3.448c0-.354.14-.693.39-.943l7.953-7.952A8 8 0 1 1 28 12Z"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    stroke="url(#gradient1)"
+                  />
+                  <defs>
+                    <linearGradient
+                      id="gradient1"
+                      x1="4"
+                      y1="25.3333"
+                      x2="22.0923"
+                      y2="2.07176"
+                      gradientUnits="userSpaceOnUse"
+                    >
+                      <stop stopColor="var(--color-primary-bold)" />
+                      <stop offset="1" stopColor="var(--color-secondary-bold)" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
             </div>
-          )}
+          </li>
+
+          {/* Secure argument 3 */}
+          <li className="flex items-center px-4 py-3 sm:px-6 space-x-4">
+            <div className="flex flex-grow text-sm">
+              We cannot make <br />
+              transactions on your behalf
+            </div>
+
+            {/* Icon: credit-card (outline) */}
+            <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14">
+              <svg
+                className="w-8 h-8 sm:w-9 sm:h-9 flex-no-shrink"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 32 32"
+              >
+                <path
+                  d="M4 13.333h24M9.333 20h1.334M16 20h1.333M8 25.333h16a4 4 0 0 0 4-4V10.667a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v10.666a4 4 0 0 0 4 4Z"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  stroke="url(#gradient2)"
+                />
+                <defs>
+                  <linearGradient
+                    id="gradient2"
+                    x1="4"
+                    y1="25.3333"
+                    x2="22.0923"
+                    y2="2.07176"
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <stop stopColor="var(--color-primary-bold)" />
+                    <stop offset="1" stopColor="var(--color-secondary-bold)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+          </li>
+        </ul>
+
+        {/* POWERED BY BASIQ API */}
+        <p className="max-w-xs mx-auto text-xs leading-relaxed text-center text-neutral-muted-darker">
+          Powered by open data platform{' '}
+          <a
+            target="_blank"
+            href="https://basiq.io"
+            rel="noopener noreferrer"
+            className="underline rounded outline-none text-primary-bold-darker hover:text-opacity-90 active:text-opacity-75 focus:ring-2 focus:ring-primary-bold focus:ring-opacity-30 ring-offset-1 ring-offset-transparent"
+          >
+            basiq.io
+          </a>{' '}
+          to securely connect your bank account.
+        </p>
+
+        {/* ACTIONS */}
+        <div className="space-y-2">
+         <Button variant="bold" loading={submitting} block onClick={() => {
+                setSubmitting(true); // Set submitting state to true
+                track('RedirectingintoConsentUI');
+                goToConsent(); // Call the goToConsent function
+            }}>
+             {submitting ? <LoadingSpinner /> : "Continue"}
+          </Button>
+
+          <Button variant="subtle" block onClick={openLearnMoreModal}>
+            Learn more
+          </Button>
         </div>
-      </div>
-    );
-  }
 
-  return null;
-};
-
-const BasiqConnectionWrapper = ({
-  isOpen,
-  onClose,
-  onSuccess,
-  userId
-}) => {
-  const [step, setStep] = useState('intro');
-  const [loading, setLoading] = useState(false);
-  const [connectedAccount, setConnectedAccount] = useState(null);
-
-  // Check if we're returning from Basiq on mount
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const jobId = urlParams.get('jobIds');
-    
-    if (jobId && isOpen) {
-      // Skip intro and go straight to Basiq flow
-      setStep('basiq');
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  // Handle transition from intro to Basiq flow
-  const handleStartConnection = () => {
-    setStep('basiq');
-  };
-
-  // Handle successful Basiq connection
-  const handleBasiqSuccess = async (accountData) => {
-    console.log('🎉 Basiq connection successful:', accountData);
-    setConnectedAccount(accountData);
-    setStep('success');
-
-    // Save connection to your backend
-    try {
-      const response = await fetch('/api/basiq/save-connection', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
-        body: JSON.stringify({
-          userId: userId,
-          basiqUserId: accountData.basiqUserId,
-          institutionName: accountData.institutionName,
-          accountId: accountData.accountId,
-          connectionData: accountData
-        })
-      });
-
-      if (response.ok) {
-        console.log('✅ Connection saved to backend');
-      } else {
-        console.error('❌ Failed to save connection to backend');
-      }
-    } catch (error) {
-      console.error('❌ Error saving connection:', error);
-    }
-
-    // Notify parent component
-    onSuccess(accountData);
-  };
-
-  // Handle Basiq flow cancellation
-  const handleBasiqCancel = () => {
-    // Clear session storage
-    sessionStorage.removeItem("userId");
-    setStep('intro');
-  };
-
-  // Handle final close
-  const handleClose = () => {
-    setStep('intro');
-    setLoading(false);
-    setConnectedAccount(null);
-    sessionStorage.removeItem("userId");
-    onClose();
-  };
-
-  // Handle final success confirmation
-  const handleFinalSuccess = () => {
-    handleClose();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-lg mx-4 relative max-h-[90vh] overflow-hidden">
-        {/* Close button */}
-        <button
-          onClick={handleClose}
-          className="absolute top-4 right-4 z-10 text-gray-500 hover:text-gray-700 bg-white rounded-full p-2 shadow-md"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-
-        <div className="overflow-y-auto max-h-[90vh]">
-          {/* STEP 1: INTRODUCTION */}
-          {step === 'intro' && (
-            <div className="p-8 text-center">
-              <div className="mb-6">
-                <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Connect Your Bank Account
-                </h2>
-                <p className="text-gray-600 max-w-md mx-auto">
-                  Securely connect your bank account to start analyzing your financial health with Quo.
-                </p>
-              </div>
-
-              {/* Benefits */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-green-600 text-2xl mb-2">🔒</div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Secure</h3>
-                  <p className="text-sm text-gray-600">Bank-level encryption via Basiq</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-blue-600 text-2xl mb-2">⚡</div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Fast</h3>
-                  <p className="text-sm text-gray-600">Connect in under 2 minutes</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-purple-600 text-2xl mb-2">📊</div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Insights</h3>
-                  <p className="text-sm text-gray-600">Instant financial analysis</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={handleStartConnection}
-                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Connect Bank Account
-                </button>
-                <button
-                  onClick={handleClose}
-                  className="w-full text-gray-600 py-2 px-6 rounded-md hover:text-gray-800 transition-colors"
-                >
-                  Skip for Now
-                </button>
-              </div>
-
-              <div className="mt-6 text-xs text-gray-500">
-                <p>
-                  By connecting your account, you agree to our Terms of Service and Privacy Policy.
-                  We use Basiq's secure API and never store your banking credentials.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: REAL BASIQ FLOW */}
-          {step === 'basiq' && (
-            <AccountVerificationFormProvider>
-              <BasiqFlowContent
-                onSuccess={handleBasiqSuccess}
-                onCancel={handleBasiqCancel}
-                userId={userId}
-              />
-            </AccountVerificationFormProvider>
-          )}
-
-          {/* STEP 3: SUCCESS */}
-          {step === 'success' && (
-            <div className="p-8 text-center">
-              <div className="mb-6">
-                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Successfully Connected!
-                </h2>
-                <p className="text-gray-600">
-                  Your bank account has been securely connected to Quo. We're now analyzing your 
-                  financial data to provide personalized insights.
-                </p>
-              </div>
-
-              {/* Show connected account info */}
-              {connectedAccount && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h3 className="font-semibold text-gray-900 mb-2">Connected Account</h3>
-                  <p className="text-gray-600">
-                    {connectedAccount.institutionName}
-                    {connectedAccount.accountName && ` - ${connectedAccount.accountName}`}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Connected on {new Date(connectedAccount.connectionDate).toLocaleDateString()}
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-3">
-                <button
-                  onClick={handleFinalSuccess}
-                  className="w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Continue to Dashboard
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        {/** LEARN MORE MODAL */}
+        <AccountVerificationFormLearnMoreModal
+          isOpen={isLearnMoreModalOpen}
+          onClose={closeLearnMoreModal}
+          onConfirm={(() => goToConsent())}
+        />
       </div>
     </div>
   );
-};
-
-export default BasiqConnectionWrapper;
+}
