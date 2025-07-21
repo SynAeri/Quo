@@ -228,17 +228,18 @@ async def verify_token(authorization: Optional[str] = Header(None)):
         
         user_id = token.replace("jwt_token_", "")
         
-        # Get user data from database
+        # Get user data from database using the existing function
         user_data = database.get_user_by_id(user_id)
         
         if "error" in user_data:
             raise HTTPException(status_code=401, detail="Invalid token")
         
         # Return user data in the format the frontend expects
+        # Note: database.get_user_by_id returns different keys than what we need
         return {
             "valid": True,
             "user": {
-                "id": str(user_data["user_id"]),
+                "id": str(user_data["id"]),  # Changed from "user_id" to "id"
                 "email": user_data["email"],
                 "firstName": user_data["first_name"],
                 "lastName": user_data["last_name"]
@@ -265,51 +266,58 @@ async def get_all_users():
         "users": result["users"]
     }
 
-# Also add this helper function to database.py if it doesn't exist:
-def get_user_by_id(user_id):
-    """Get user by ID"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Convert string ID to int if needed
-        user_id_int = int(user_id) if isinstance(user_id, str) else user_id
-        
-        cursor.execute("""
-            SELECT id, email, first_name, last_name, basiq_user_id
-            FROM users 
-            WHERE id = ?
-        """, (user_id_int,))
-        
-        user = cursor.fetchone()
-        
-        if not user:
-            return {"error": "User not found"}
-        
-        return {
-            "user_id": user[0],
-            "email": user[1],
-            "first_name": user[2],
-            "last_name": user[3],
-            "basiq_user_id": user[4]
-        }
-        
-    except Exception as e:
-        print(f"Database error: {e}")
-        return {"error": str(e)}
-    finally:
-        conn.close()
-
 # ==================================================== #
 #                  Basiq Endpoint                      #
 # ==================================================== #
 
 @app.post("/api/basiq/save-connection")
-async def saveBasiqConnection(connection_data: BasiqConnectionReq):
-    # Saves bank connections when implementing Basiq
-    print(f"saving.. {connection_data.userId}")
-    return {"success"}
+async def save_basiq_connection(connection_data: BasiqConnectionReq):
+    """Save bank connection details after successful Basiq connection"""
+    try:
+        print(f"Saving connection for user: {connection_data.userId}")
+        
+        # Save to database
+        result = database.save_basiq_connection(
+            user_id=int(connection_data.userId),
+            basiq_user_id=connection_data.basiqUserId,
+            institution_name=connection_data.institutionName,
+            account_ids=connection_data.accountIds
+        )
+        
+        if "error" in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        
+        return {
+            "success": True,
+            "message": "Connection saved successfully"
+        }
+        
+    except Exception as e:
+        print(f"Error saving connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save connection")
 
+
+@app.get("/api/basiq/check-connection/{user_id}")
+async def check_user_connection(user_id: str):
+    """Check if user has active Basiq connections"""
+    try:
+        # Get user connections from database
+        connections = database.get_user_basiq_connections(int(user_id))
+        
+        if "error" in connections:
+            raise HTTPException(status_code=500, detail=connections["error"])
+        
+        has_connections = len(connections.get("connections", [])) > 0
+        
+        return {
+            "has_connections": has_connections,
+            "connections": connections.get("connections", []),
+            "connection_count": len(connections.get("connections", []))
+        }
+        
+    except Exception as e:
+        print(f"Error checking connections: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check connections")
 
 # ==================================================== #
 #                  Client Endpoint                     #
