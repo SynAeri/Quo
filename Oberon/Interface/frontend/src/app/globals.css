@@ -53,7 +53,7 @@ body {
   flex-direction: column;
   letter-spacing: var(--letter-spacing);
   position: relative;
-  overflow: hidden;
+  overflow: auto;
 
 }
 
