@@ -1,8 +1,8 @@
 from collections import defaultdict
-from basiq_manager import BasiqAPI
+from .basiq_manager import BasiqAPI
 from typing import List, Dict, Optional
-
-from transactions import Transaction, AllTransactions
+import os
+from .transactions import Transaction, AllTransactions
 
 class User:
     def __init__(self, user_id: str, filter_transfer: bool, filter_loans: bool):
@@ -15,19 +15,45 @@ class User:
     
     def create_API_Interface(self) -> BasiqAPI:
         # Every user has a BasiqAPI class to ensure we can make future API calls corresponding with a certain user
-        return BasiqAPI(api_key="OGZmYTY5YWYtODhlMy00YTU3LThmMzMtYTVlMGE3YzA5OGY3Ojk3YzJhODE4LWU5ZjMtNDI5MC1iNzkyLWJkZjI5ZmU5M2NhMg==", User=self)
+        BasiqKey = os.getenv("BASIQ_API_KEY")
+
+        return BasiqAPI(BasiqKey, User=self)
     
     def fetch_transactions(self) -> List[Transaction]:
-        data = self.BasiqManager.getTransactionData(self.filter_transfer, self.filter_loans)
-        if not data:
-            return "Error Retrieving Transactions"
-        
-        transactions = []
-        for tx in data:
-            new_transaction = Transaction(tx['description'], tx['category'], tx['date'], tx['amount'], tx['mode'])
-            transactions.append(new_transaction)
-        
-        return transactions
+        try:
+            data = self.BasiqManager.getTransactionData(self.filter_transfer, self.filter_loans)
+
+            if not data:
+                print(f"No transaction data returned for user {self.user_id}")
+                return [] # Return empty list 
+            
+            if isinstance(data, str): # incase of error
+                print(f"error fetching transactions: {data}")
+                return [] # Return empty list
+
+            transactions = []
+            for tx in data:
+                #print(data) DEBUG PRINTS LOTS OF TRANSACTIONS
+                try:
+                    new_transaction = Transaction(
+                        tx['description'], 
+                        tx['category'], 
+                        tx['date'], 
+                        tx['amount'], 
+                        tx['mode']
+                    )
+                    transactions.append(new_transaction)
+                except Exception as e:
+                    print(f"Error creating transaction: {e}")
+                    continue
+            print(f"Fetched {len(transactions)} transactions for user {self.user_id}")
+            return transactions
+            
+        except Exception as e:
+            print(f"Exception in fetch_transactions: {e}")
+            return []  # Return empty list on error            
+                    
+
         
     def get_accounts(self) -> dict:
         return self.BasiqManager.get_accounts()

@@ -10,7 +10,8 @@ requests
 
 # Data Processing (Python 3.12 compatible versions)
 pandas>=2.2.0
-numpy>=1.26.0
+selenium
+matplotlib
 
 # Testing
 pytest

@@ -1,6 +1,7 @@
+// app/hooks/useAuth.ts
 'use client';
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { verifyToken, loginUser, signupUser } from '../utils/api';
 
 interface User {
@@ -10,9 +11,34 @@ interface User {
   lastName: string;
 }
 
+// Create a global event emitter for auth state changes
+const authEventEmitter = {
+  listeners: [] as Array<() => void>,
+  emit() {
+    this.listeners.forEach(listener => listener());
+  },
+  subscribe(listener: () => void) {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+};
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [, forceUpdate] = useState({});
+  const router = useRouter();
+
+  // Subscribe to auth changes
+  useEffect(() => {
+    const unsubscribe = authEventEmitter.subscribe(() => {
+      checkAuthStatus();
+      forceUpdate({}); // Force re-render
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     checkAuthStatus();
@@ -32,11 +58,13 @@ export function useAuth() {
           // Token is invalid
           localStorage.removeItem('authToken');
           sessionStorage.clear();
+          setUser(null);
         }
       } catch (error) {
         console.error('Auth verification failed:', error);
-        // Don't clear auth on network errors - server might be down
       }
+    } else {
+      setUser(null);
     }
     
     setIsLoading(false);
@@ -50,6 +78,7 @@ export function useAuth() {
       setUser(response.user);
       sessionStorage.setItem('userId', response.user.id);
       sessionStorage.setItem('userData', JSON.stringify(response.user));
+      authEventEmitter.emit(); // Notify all listeners
     }
     
     return response;
@@ -63,30 +92,47 @@ export function useAuth() {
       setUser(response.user);
       sessionStorage.setItem('userId', response.user.id);
       sessionStorage.setItem('userData', JSON.stringify(response.user));
+      authEventEmitter.emit(); // Notify all listeners
     }
     
     return response;
   };
 
-  // Alternative login method for components that just pass userData
   const setUserData = (userData: User) => {
     setUser(userData);
     sessionStorage.setItem('userId', userData.id);
     sessionStorage.setItem('userData', JSON.stringify(userData));
+    authEventEmitter.emit(); // Notify all listeners
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
+    // Clear all auth data
     localStorage.removeItem('authToken');
     sessionStorage.clear();
     setUser(null);
-  };
+    
+    // Emit auth change event
+    authEventEmitter.emit();
+    
+    // Try router methods
+    router.push('/');
+    router.refresh();
+    
+    // If all else fails, force a page reload after a short delay
+    setTimeout(() => {
+      if (localStorage.getItem('authToken')) {
+        // If token still exists, force reload
+        window.location.href = '/';
+      }
+    }, 100);
+  }, [router]);
 
   return {
     user,
     isLoading,
-    login,      // For email/password login
-    signup,     // For signup
-    setUserData, // For components that already have user data
+    login,
+    signup,
+    setUserData,
     logout,
     checkAuthStatus
   };

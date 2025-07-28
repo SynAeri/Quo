@@ -1,5 +1,5 @@
 'use client';
-
+import { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useBasiqConnection } from './hooks/useBasiqConnection';
 import HeroSection from './components/sections/HeroSection';
@@ -15,18 +15,41 @@ export default function Home() {
     closeBasiqModal,
     handleBasiqSuccess 
   } = useBasiqConnection();
+  
+  // Add account state management
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  // Listen for account changes from navbar
+  useEffect(() => {
+    const handleAccountChange = (event: CustomEvent) => {
+      console.log('Page - Account changed event received:', event.detail);
+      setSelectedAccountId(event.detail.accountId);
+    };
+
+    window.addEventListener('accountChanged', handleAccountChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('accountChanged', handleAccountChange as EventListener);
+    };
+  }, []);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Page - Selected Account:', selectedAccountId);
+  }, [selectedAccountId]);
 
   // For logged-in users, show dashboard only
   if (user) {
     return (
       <div className="min-h-screen">
-        <AuthHeader user={user} onLogout={logout} />
         <DashboardSection 
           user={user}
           onConnectBank={openBasiqModal}
           isBasiqModalOpen={isBasiqModalOpen}
           onBasiqModalClose={closeBasiqModal}
           onBasiqSuccess={handleBasiqSuccess}
+          selectedAccountId={selectedAccountId}
+          onAccountChange={setSelectedAccountId}
         />
       </div>
     );
@@ -42,6 +65,7 @@ export default function Home() {
       
       {/* Gradient transition */}
       <div className="h-70 bg-gradient-to-b from-transparent to-black relative z-10" /> 
+      
       {/* About section with white background */}
       <div className="bg-black relative z-10">
         <AboutSection />

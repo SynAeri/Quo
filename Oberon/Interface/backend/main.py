@@ -10,6 +10,14 @@ from pydantic.version import version_info # Basic communication
 from typing import Optional
 
 
+# analysis imports
+from analysis.globals.users import User, UserManager
+# from analysis.transactionAnalysis.graphs import Graphs
+from analysis.globals.transactions import *
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+
+
 # Basiq Token Gen
 import requests
 import base64
@@ -367,3 +375,1515 @@ async def get_client_token(userId: str):
     except Exception as e:
         print(f"Error getting Basiq token: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate client token")
+
+# ==================================================== #
+#                  Analysis Endpoin                    #
+# ==================================================== #
+
+@app.get("/api/analysis/deepAnalysis.subscriptionDetectorspendingByCategory/{user_id}")
+async def getSpendByCat(user_id: str):
+    # use graph representing spend analysis
+
+    """ 
+    Goal:
+    get current user instance 
+    collate transaction data 
+    Create graph via frontend 
+    """ 
+
+        # user creation
+    try:
+        user_data = database.get_user_by_id(user_id)
+
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+
+        if not basiq_user_id:
+            print(f"User {user_id} has no Basiq ID")
+            return {
+                "categories": [],
+                "total": 0,
+                "highest": {
+                    "category": "No data",
+                    "amount": 0
+                },
+                "message": "No bank account connected"
+            }
+
+        print(f"DEBUG Getting spending analysis for user {user_id} with Basiq ID: {basiq_user_id}")
+
+        # Create user instance with the Basiq user ID
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+     
+        
+        # Check if transactions were fetched successfully
+        if isinstance(user.transactions, str):  # Error case
+            print(f"Failed to fetch transactions: {user.transactions}")
+            return {
+                "categories": [],
+                "total": 0,
+                "highest": {
+                    "category": "No data",
+                    "amount": 0
+                },
+                "message": "Unable to fetch transaction data"
+            }
+
+        # Get all transactions
+        allTransactions = user.get_transaction_group()
+        
+        # Get category totals
+        categories, amounts = allTransactions.category_total_points()
+        
+        print(f"Categories found: {len(categories)}")
+
+        # Handle empty data
+        if not categories or not amounts:
+            return {
+                "categories": [],
+                "total": 0,
+                "highest": {
+                    "category": "No data",
+                    "amount": 0
+                },
+                "message": "No transactions found"
+            }
+        
+        # Calculate totals
+        total = sum(amounts)
+        max_amount = max(amounts)
+        max_index = amounts.index(max_amount)
+        
+        # Return format for recharts
+        return {
+            "categories": [
+                {"name": cat, "amount": amt}
+                for cat, amt in zip(categories, amounts)
+            ],
+            "total": total,
+            "highest": {
+                "category": categories[max_index],
+                "amount": max_amount
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in spending analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to get spending analysis: {str(e)}")
+
+
+# Deep Analysis
+@app.get("/api/analysis/enhancedSpendingByCategory/{user_id}")
+async def getEnhancedSpendByCat(user_id: str):
+    """
+    Get enhanced spending analysis with subcategories for unknown/broad categories
+    """
+    try:
+        # Get user's Basiq ID
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {
+                "categories": [],
+                "enhanced_categories": {},
+                "total": 0,
+                "message": "No bank account connected"
+            }
+        
+        # Create user instance
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        if isinstance(user.transactions, str):
+            return {
+                "categories": [],
+                "enhanced_categories": {},
+                "total": 0,
+                "message": "Unable to fetch transaction data"
+            }
+        
+        # Standard analysis
+        allTransactions = user.get_transaction_group()
+        categories, amounts = allTransactions.category_total_points()
+        
+        # Enhanced analysis
+        from analysis.transactionAnalysis.deepAnalysis.categoryAssigner import EnhancedTransactionAnalysis
+        enhanced_analyzer = EnhancedTransactionAnalysis(user.transactions)
+        enhanced_data = enhanced_analyzer.get_enhanced_category_analysis()
+        
+        # Format response
+        total = sum(amounts) if amounts else 0
+        
+        # Prepare enhanced categories (ones that have subcategories)
+        enhanced_categories = {}
+        for cat, data in enhanced_data.items():
+            if data['subcategories']:
+                enhanced_categories[cat] = {
+                    'total': data['total'],
+                    'count': data['transaction_count'],
+                    'subcategories': [
+                        {
+                            'name': subcat,
+                            'amount': subdata['amount'],
+                            'count': subdata['count']
+                        }
+                        for subcat, subdata in data['subcategories'].items()
+                    ]
+                }
+        
+        return {
+            "categories": [
+                {"name": cat, "amount": amt}
+                for cat, amt in zip(categories, amounts)
+            ],
+            "enhanced_categories": enhanced_categories,
+            "total": total,
+            "insights": {
+                "unknown_ratio": enhanced_data.get('Unknown', {}).get('total', 0) / total if total > 0 else 0,
+                "categories_with_subcategories": list(enhanced_categories.keys())
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error in enhanced spending analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Add this to main.py
+
+# Update your existing groupedSpendingByPeriod endpoint to handle account filtering
+
+@app.get("/api/analysis/groupedSpendingByPeriod/{user_id}")
+async def getGroupedSpendingByPeriod(
+    user_id: str, 
+    period: str = "month",
+    group_categories: bool = True,
+    account_id: Optional[str] = None  # Add optional account_id parameter
+):
+    """
+    Get spending analysis with AI-grouped categories
+    """
+    try:
+        # If account_id is provided, redirect to account-specific endpoint
+        if account_id:
+            return await getSpendingByAccount(user_id, account_id, period)
+        
+        # Otherwise, continue with all accounts analysis
+        # Get user's Basiq ID
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {
+                "categories": [],
+                "grouped_categories": {},
+                "total": 0,
+                "period": period,
+                "message": "No bank account connected"
+            }
+        
+        # Create user instance
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        if isinstance(user.transactions, str):
+            return {
+                "categories": [],
+                "grouped_categories": {},
+                "total": 0,
+                "period": period,
+                "message": "Unable to fetch transaction data"
+            }
+        
+        # Filter transactions by date
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        filtered_transactions = []
+        
+        print(f"Filtering transactions for period: {period}")
+        print(f"Total transactions before filtering: {len(user.transactions)}")
+        
+        if period == "month":
+            start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            filtered_transactions = [
+                tx for tx in user.transactions 
+                if tx.date >= start_of_month
+            ]
+            period_label = f"{now.strftime('%B %Y')}"
+        elif period == "year":
+            start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            filtered_transactions = [
+                tx for tx in user.transactions 
+                if tx.date >= start_of_year
+            ]
+            period_label = f"{now.year}"
+        else:  # "all"
+            filtered_transactions = user.transactions
+            period_label = "All Time"
+        
+        print(f"Filtered transactions count: {len(filtered_transactions)}")
+        
+        # Standard analysis
+        from analysis.globals.transactions import AllTransactions
+        filtered_group = AllTransactions(filtered_transactions)
+        categories, amounts = filtered_group.category_total_points()
+        
+        print(f"Categories found: {len(categories)}")
+        
+        if not categories:
+            return {
+                "categories": [],
+                "grouped_categories": {},
+                "enhanced_categories": {},
+                "total": 0,
+                "period": period,
+                "period_label": period_label,
+                "num_transactions": 0,
+                "message": f"No transactions found for {period_label}"
+            }
+        
+        # Prepare category data
+        category_data = [
+            {"name": cat, "amount": amt}
+            for cat, amt in zip(categories, amounts)
+        ]
+        
+        total_spending = sum(amounts)
+        
+        # Enhanced analysis for unknown/no category
+        enhanced_categories = {}
+        try:
+            from analysis.transactionAnalysis.deepAnalysis.categoryAssigner import EnhancedTransactionAnalysis
+            
+            # Get transactions for "Unknown" and "No Category"
+            special_categories = ['unknown', 'uncategorized', 'other', 'no category']
+            
+            for cat_name in categories:
+                if cat_name.lower() in special_categories:
+                    # Get transactions for this category
+                    cat_transactions = [
+                        tx for tx in filtered_transactions 
+                        if tx.category.lower() == cat_name.lower()
+                    ]
+                    
+                    if cat_transactions:
+                        analyzer = EnhancedTransactionAnalysis(cat_transactions)
+                        unknown_analysis = analyzer.analyze_unknown_transactions()
+                        
+                        subcats = []
+                        for subcat_name, subcat_txs in unknown_analysis.items():
+                            subcats.append({
+                                'name': subcat_name,
+                                'amount': sum(tx.amount for tx in subcat_txs),
+                                'count': len(subcat_txs)
+                            })
+                        
+                        if subcats:
+                            enhanced_categories[cat_name] = {
+                                'total': sum(tx.amount for tx in cat_transactions),
+                                'count': len(cat_transactions),
+                                'subcategories': sorted(subcats, key=lambda x: x['amount'], reverse=True)
+                            }
+        except Exception as e:
+            print(f"Enhanced analysis error: {e}")
+        
+        # Group categories if requested
+        grouped_categories = {}
+        category_insights = {}
+        
+        if group_categories:
+            try:
+                from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
+                grouper = CategoryGrouper()
+                grouped_categories = grouper.group_categories(category_data)
+                category_insights = grouper.get_category_insights(grouped_categories)
+            except Exception as e:
+                print(f"Category grouping error: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Calculate monthly stats
+        from collections import defaultdict
+        monthly_totals = defaultdict(float)
+        for tx in filtered_transactions:
+            month_key = tx.date.strftime('%Y-%m')
+            monthly_totals[month_key] += tx.amount
+        
+        num_months = len(monthly_totals) if monthly_totals else 1
+        avg_monthly = total_spending / num_months if num_months > 0 else 0
+        
+        return {
+            "categories": category_data,
+            "grouped_categories": grouped_categories,
+            "enhanced_categories": enhanced_categories,
+            "total": total_spending,
+            "period": period,
+            "period_label": period_label,
+            "average_monthly": avg_monthly,
+            "num_transactions": len(filtered_transactions),
+            "insights": {
+                "category_insights": category_insights,
+                "num_months": num_months,
+                "total_categories": len(categories),
+                "has_uncategorized": any(cat.lower() in ['unknown', 'uncategorized', 'other', 'no category'] for cat in categories) if categories else False
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in grouped spending analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================================================== #
+#                  Account Management                  #
+# ==================================================== #
+
+# Replace the existing /api/accounts/{user_id} endpoint in your main.py with this version
+
+@app.get("/api/accounts/{user_id}")
+async def get_user_accounts(user_id: str):
+    """Get all bank accounts for a user"""
+    try:
+        print(f"Fetching accounts for user: {user_id}")
+        
+        # First, get user data to ensure user exists and has basiq_user_id
+        user_data = database.get_user_by_id(user_id)
+        
+        # Handle different return types from database
+        if user_data is None:
+            print(f"User {user_id} not found")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if isinstance(user_data, str):
+            print(f"Database returned string error: {user_data}")
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        if isinstance(user_data, dict) and "error" in user_data:
+            print(f"Database returned error dict: {user_data['error']}")
+            raise HTTPException(status_code=404, detail=user_data["error"])
+        
+        # Safely get basiq_user_id
+        basiq_user_id = None
+        if isinstance(user_data, dict):
+            basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            print(f"User {user_id} has no Basiq account")
+            return {
+                "accounts": [],
+                "message": "No Basiq account connected",
+                "defaultAccountId": None
+            }
+        
+        # Get user's connections from database
+        connections_result = database.get_user_basiq_connections(int(user_id))
+        
+        # Handle different return types for connections
+        if connections_result is None:
+            connections_list = []
+        elif isinstance(connections_result, str):
+            print(f"Connections query returned string: {connections_result}")
+            connections_list = []
+        elif isinstance(connections_result, dict):
+            if "error" in connections_result:
+                print(f"Connections error: {connections_result['error']}")
+                connections_list = []
+            else:
+                connections_list = connections_result.get("connections", [])
+        else:
+            connections_list = []
+        
+        # Get Basiq API key
+        basiq_api_key = os.getenv("BASIQ_API_KEY")
+        if not basiq_api_key:
+            raise HTTPException(status_code=500, detail="Basiq API key not configured")
+            
+        auth_string = basiq_api_key
+        
+        # Get server token
+        print("Getting Basiq server token...")
+        token_response = requests.post(
+            "https://au-api.basiq.io/token",
+            headers={
+                "accept": "application/json",
+                "content-type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {auth_string}",
+                "basiq-version": "3.0"
+            },
+            data={"scope": "SERVER_ACCESS"}
+        )
+        
+        if token_response.status_code != 200:
+            print(f"Failed to get Basiq token: {token_response.status_code} - {token_response.text}")
+            raise HTTPException(status_code=500, detail="Failed to get Basiq token")
+        
+        server_token = token_response.json()["access_token"]
+        
+        # Get accounts from Basiq
+        print(f"Fetching accounts from Basiq for user: {basiq_user_id}")
+        accounts_response = requests.get(
+            f"https://au-api.basiq.io/users/{basiq_user_id}/accounts",
+            headers={
+                "accept": "application/json",
+                "authorization": f"Bearer {server_token}",
+                "basiq-version": "3.0"
+            }
+        )
+        
+        print(f"Basiq accounts response status: {accounts_response.status_code}")
+        
+        if accounts_response.status_code != 200:
+            print(f"Failed to fetch accounts from Basiq: {accounts_response.text}")
+            # Return empty accounts list instead of failing
+            return {
+                "accounts": [],
+                "message": "Unable to fetch accounts from Basiq",
+                "defaultAccountId": None
+            }
+        
+        # Parse the response
+        try:
+            accounts_data = accounts_response.json()
+            print(f"Basiq response structure: {accounts_data.keys() if isinstance(accounts_data, dict) else type(accounts_data)}")
+            
+            # Basiq API typically returns data in a 'data' field
+            accounts_list = accounts_data.get("data", [])
+            print(f"Found {len(accounts_list)} accounts from Basiq")
+            
+            # Debug: print first account structure if available
+            if accounts_list and len(accounts_list) > 0:
+                print(f"First account keys: {accounts_list[0].keys()}")
+                
+        except Exception as e:
+            print(f"Error parsing Basiq response: {e}")
+            print(f"Raw response: {accounts_response.text[:500]}")  # First 500 chars
+            return {
+                "accounts": [],
+                "message": "Error parsing account data",
+                "defaultAccountId": None
+            }
+        
+        # Format accounts for frontend
+        formatted_accounts = []
+        for account in accounts_list:
+            try:
+                # Debug the account structure
+                print(f"Processing account: {account.get('id', 'no-id')}")
+                
+                # Extract account details - adjust field names based on actual Basiq response
+                account_data = {
+                    "id": account.get("id", ""),
+                    "name": account.get("name") or account.get("accountName") or "Unknown Account",
+                    "accountNo": account.get("accountNo") or account.get("accountNumber") or "****",
+                    "balance": float(account.get("balance", 0)),
+                    "availableBalance": float(account.get("availableBalance") or account.get("available", 0)),
+                    "accountType": account.get("type") or account.get("class", {}).get("type", "Unknown"),
+                    "institution": "",  # Will be filled below
+                    "status": account.get("status", "active"),
+                    "lastUpdated": account.get("lastUpdated") or account.get("lastRefreshed", "")
+                }
+                
+                # Handle institution data (might be nested)
+                institution = account.get("institution", {})
+                if isinstance(institution, dict):
+                    account_data["institution"] = institution.get("name", "Unknown Bank")
+                elif isinstance(institution, str):
+                    account_data["institution"] = institution
+                else:
+                    # Try to get institution from connection
+                    connection = account.get("connection", {})
+                    if isinstance(connection, dict):
+                        inst = connection.get("institution", {})
+                        if isinstance(inst, dict):
+                            account_data["institution"] = inst.get("name", "Unknown Bank")
+                
+                # Only include active accounts or if status field doesn't exist
+                if account.get("status", "active") != "closed":
+                    formatted_accounts.append(account_data)
+                    
+            except Exception as e:
+                print(f"Error formatting account {account.get('id', 'unknown')}: {e}")
+                continue
+        
+        # Determine default account ID
+        default_account_id = None
+        if formatted_accounts:
+            # Use the first account as default
+            default_account_id = formatted_accounts[0]["id"]
+            
+            # Or use the first account ID from connections if available
+            if connections_list and len(connections_list) > 0:
+                first_connection = connections_list[0]
+                if isinstance(first_connection, dict):
+                    account_ids = first_connection.get("account_ids", [])
+                    if account_ids and len(account_ids) > 0:
+                        default_account_id = account_ids[0]
+        
+        print(f"Returning {len(formatted_accounts)} accounts")
+        
+        return {
+            "accounts": formatted_accounts,
+            "defaultAccountId": default_account_id,
+            "message": "Success"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in get_user_accounts: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# Replace your spendingByAccount endpoint with this simpler version
+
+@app.get("/api/analysis/spendingByAccount/{user_id}/{account_id}")
+async def getSpendingByAccount(
+    user_id: str, 
+    account_id: str,
+    period: str = "month"
+):
+    """Get spending analysis for a specific account using simple query parameter"""
+    try:
+        print(f"Getting spending for user {user_id}, account {account_id}, period {period}")
+        
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {
+                "categories": [],
+                "total": 0,
+                "message": "No bank account connected"
+            }
+        
+        # Get Basiq token
+        basiq_api_key = os.getenv("BASIQ_API_KEY")
+        auth_string = basiq_api_key
+        
+        token_response = requests.post(
+            "https://au-api.basiq.io/token",
+            headers={
+                "accept": "application/json",
+                "content-type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {auth_string}",
+                "basiq-version": "3.0"
+            },
+            data={"scope": "SERVER_ACCESS"}
+        )
+        
+        if token_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to get Basiq token")
+        
+        server_token = token_response.json()["access_token"]
+        
+        # Set up the request URL
+        transactions_url = f"https://au-api.basiq.io/users/{basiq_user_id}/transactions"
+        
+        # Simple query parameters
+        params = {
+            "limit": 500,
+            "account.id": account_id  # Direct parameter instead of filter
+        }
+        
+        print(f"Fetching from: {transactions_url}")
+        print(f"With params: {params}")
+        
+        # Make the request
+        transactions_response = requests.get(
+            transactions_url,
+            headers={
+                "Authorization": f"Bearer {server_token}",
+                "Accept": "application/json",
+                "basiq-version": "3.0"
+            },
+            params=params
+        )
+        
+        print(f"Basiq response status: {transactions_response.status_code}")
+        
+        if transactions_response.status_code != 200:
+            print(f"Basiq error: {transactions_response.text}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to fetch transactions: {transactions_response.status_code}"
+            )
+        
+        transactions_data = transactions_response.json()
+        raw_transactions = transactions_data.get("data", [])
+        
+        print(f"Fetched {len(raw_transactions)} transactions for account {account_id}")
+        
+        # Apply date filtering in Python since we're not using the filter parameter
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        
+        if period != "all":
+            if period == "month":
+                start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            elif period == "year":
+                start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                start_date = now - timedelta(days=365)
+            
+            # Filter transactions by date
+            filtered_transactions = []
+            for tx in raw_transactions:
+                tx_date_str = tx.get("postDate") or tx.get("transactionDate")
+                if tx_date_str:
+                    tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d")
+                    if tx_date >= start_date:
+                        filtered_transactions.append(tx)
+            
+            raw_transactions = filtered_transactions
+            print(f"After date filtering: {len(raw_transactions)} transactions")
+        
+        if not raw_transactions:
+            # Get account name for better UX
+            account_name = "Unknown Account"
+            try:
+                account_response = requests.get(
+                    f"https://au-api.basiq.io/users/{basiq_user_id}/accounts/{account_id}",
+                    headers={
+                        "Authorization": f"Bearer {server_token}",
+                        "Accept": "application/json",
+                        "basiq-version": "3.0"
+                    }
+                )
+                if account_response.status_code == 200:
+                    account_data = account_response.json()
+                    account_name = account_data.get("name", "Unknown Account")
+            except:
+                pass
+            
+            return {
+                "categories": [],
+                "total": 0,
+                "message": f"No transactions found for {account_name} in {period}",
+                "account_id": account_id,
+                "account_name": account_name,
+                "transaction_count": 0,
+                "period": period,
+                "period_label": f"{now.strftime('%B %Y')}" if period == "month" else str(now.year) if period == "year" else "All Time"
+            }
+        
+        # Process transactions by category
+        from collections import defaultdict
+        category_totals = defaultdict(float)
+        
+        # Debug: Let's see what the transaction data looks like
+        if raw_transactions:
+            print(f"Sample transaction: {raw_transactions[0]}")
+            print(f"Category field: {raw_transactions[0].get('category')}")
+            print(f"SubClass field: {raw_transactions[0].get('subClass')}")
+        
+        for tx in raw_transactions:
+            # Get transaction details
+            amount = abs(float(tx.get("amount", 0)))
+            
+            # Get category - use the enriched data first
+            category_name = "Uncategorized"  # Default
+            
+            # Try enriched category data first (most accurate)
+            enrich = tx.get("enrich", {})
+            if enrich and isinstance(enrich, dict):
+                category_data = enrich.get("category", {})
+                if category_data and isinstance(category_data, dict):
+                    anzsic = category_data.get("anzsic", {})
+                    if anzsic and isinstance(anzsic, dict):
+                        # Try class first, then group, then subdivision
+                        class_data = anzsic.get("class", {})
+                        if class_data and isinstance(class_data, dict):
+                            category_name = class_data.get("title", "Uncategorized")
+                        elif anzsic.get("group", {}).get("title"):
+                            category_name = anzsic["group"]["title"]
+                        elif anzsic.get("subdivision", {}).get("title"):
+                            category_name = anzsic["subdivision"]["title"]
+            
+            # If still uncategorized, try subClass
+            if category_name == "Uncategorized":
+                subclass_obj = tx.get("subClass", {})
+                if subclass_obj and isinstance(subclass_obj, dict):
+                    title = subclass_obj.get("title")
+                    if title:
+                        category_name = title
+            
+            # If still uncategorized, use class field with better names
+            if category_name == "Uncategorized":
+                class_name = tx.get("class")
+                if class_name:
+                    # Convert class to readable format
+                    category_map = {
+                        "bank-fee": "Bank Fees",
+                        "payment": "General Payment",
+                        "cash-withdrawal": "Cash Withdrawal",
+                        "transfer": "Transfers",
+                        "loan-interest": "Loan Interest",
+                        "refund": "Refunds",
+                        "direct-credit": "Income",
+                        "interest": "Interest Earned",
+                        "loan-repayment": "Loan Repayment"
+                    }
+                    category_name = category_map.get(class_name, class_name.replace("-", " ").title())
+            
+            # Debug first few transactions
+            if len(category_totals) < 5:
+                print(f"TX: {tx.get('description')[:40]} | Cat: {category_name} | Amount: ${amount}")
+            
+            # Only count expenses (negative amounts)
+            if float(tx.get("amount", 0)) < 0:
+                category_totals[category_name] += amount
+        
+        # Convert to expected format
+        category_data = [
+            {"name": cat, "amount": amt}
+            for cat, amt in category_totals.items()
+        ]
+        
+        # Sort by amount
+        category_data.sort(key=lambda x: x["amount"], reverse=True)
+        
+        # Apply grouping
+        grouped_categories = {}
+        category_insights = {}
+        try:
+            from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
+            grouper = CategoryGrouper()
+            if category_data:  # Only group if we have categories
+                grouped_categories = grouper.group_categories(category_data)
+                print(f"Grouped categories result: {grouped_categories}")
+                
+                # Get insights if the grouper has this method
+                if hasattr(grouper, 'get_category_insights'):
+                    category_insights = grouper.get_category_insights(grouped_categories)
+                    print(f"Category insights: {category_insights}")
+        except Exception as e:
+            print(f"Error grouping categories: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Enhanced analysis for unknown categories
+        enhanced_categories = {}
+        try:
+            # Convert Basiq transactions to Transaction objects for analysis
+            from analysis.globals.transactions import Transaction
+            from analysis.transactionAnalysis.deepAnalysis.categoryAssigner import EnhancedTransactionAnalysis
+            
+            special_categories = ['unknown', 'uncategorized', 'other', 'no category']
+            
+            for cat_name in category_totals.keys():
+                if cat_name.lower() in special_categories:
+                    # Get all transactions for this category
+                    cat_transactions = []
+                    for tx in raw_transactions:
+                        # Extract category using the same logic
+                        tx_cat = "Uncategorized"
+                        
+                        # Try enriched category data first
+                        enrich = tx.get("enrich", {})
+                        if enrich and isinstance(enrich, dict):
+                            category_data = enrich.get("category", {})
+                            if category_data and isinstance(category_data, dict):
+                                anzsic = category_data.get("anzsic", {})
+                                if anzsic and isinstance(anzsic, dict):
+                                    class_data = anzsic.get("class", {})
+                                    if class_data and isinstance(class_data, dict):
+                                        tx_cat = class_data.get("title", "Uncategorized")
+                                    elif anzsic.get("group", {}).get("title"):
+                                        tx_cat = anzsic["group"]["title"]
+                        
+                        # Try subClass if still uncategorized
+                        if tx_cat == "Uncategorized":
+                            subclass_obj = tx.get("subClass", {})
+                            if subclass_obj and isinstance(subclass_obj, dict):
+                                title = subclass_obj.get("title")
+                                if title:
+                                    tx_cat = title
+                        
+                        # Use class field as last resort
+                        if tx_cat == "Uncategorized":
+                            class_name = tx.get("class")
+                            if class_name:
+                                category_map = {
+                                    "bank-fee": "Bank Fees",
+                                    "payment": "General Payment",
+                                    "cash-withdrawal": "Cash Withdrawal",
+                                    "transfer": "Transfers",
+                                    "loan-interest": "Loan Interest",
+                                    "refund": "Refunds",
+                                    "direct-credit": "Income",
+                                    "interest": "Interest Earned",
+                                    "loan-repayment": "Loan Repayment"
+                                }
+                                tx_cat = category_map.get(class_name, class_name.replace("-", " ").title())
+                        
+                        if tx_cat.lower() == cat_name.lower() and float(tx.get("amount", 0)) < 0:
+                            # Convert to Transaction object
+                            tx_date_str = tx.get("postDate") or tx.get("transactionDate")
+                            tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d") if tx_date_str else datetime.now()
+                            
+                            trans_obj = Transaction(
+                                amount=abs(float(tx.get("amount", 0))),
+                                date=tx_date,
+                                description=tx.get("description", ""),
+                                category=tx_cat,
+                                mode="expense"  # Add the required mode parameter
+                            )
+                            cat_transactions.append(trans_obj)
+                    
+                    if cat_transactions:
+                        analyzer = EnhancedTransactionAnalysis(cat_transactions)
+                        unknown_analysis = analyzer.analyze_unknown_transactions()
+                        
+                        subcats = []
+                        for subcat_name, subcat_txs in unknown_analysis.items():
+                            subcats.append({
+                                'name': subcat_name,
+                                'amount': sum(tx.amount for tx in subcat_txs),
+                                'count': len(subcat_txs)
+                            })
+                        
+                        if subcats:
+                            enhanced_categories[cat_name] = {
+                                'total': sum(tx.amount for tx in cat_transactions),
+                                'count': len(cat_transactions),
+                                'subcategories': sorted(subcats, key=lambda x: x['amount'], reverse=True)
+                            }
+        except Exception as e:
+            print(f"Enhanced analysis error: {e}")
+        
+        total_amount = sum(cat["amount"] for cat in category_data)
+        
+        # Get account name
+        account_name = account_id  # Default
+        try:
+            account_response = requests.get(
+                f"https://au-api.basiq.io/users/{basiq_user_id}/accounts/{account_id}",
+                headers={
+                    "Authorization": f"Bearer {server_token}",
+                    "Accept": "application/json",
+                    "basiq-version": "3.0"
+                }
+            )
+            if account_response.status_code == 200:
+                account_data = account_response.json()
+                account_name = account_data.get("name", account_id)
+        except:
+            pass
+        
+        # Calculate monthly average
+        num_months = 1
+        if period == "year":
+            num_months = 12
+        elif period == "all" and raw_transactions:
+            # Calculate based on date range
+            dates = []
+            for tx in raw_transactions:
+                tx_date_str = tx.get("postDate") or tx.get("transactionDate")
+                if tx_date_str:
+                    dates.append(datetime.strptime(tx_date_str[:10], "%Y-%m-%d"))
+            if dates:
+                min_date = min(dates)
+                max_date = max(dates)
+                num_months = max(1, ((max_date.year - min_date.year) * 12 + max_date.month - min_date.month))
+        
+        avg_monthly = total_amount / num_months if num_months > 0 else total_amount
+        
+        return {
+            "categories": category_data,
+            "grouped_categories": grouped_categories,
+            "enhanced_categories": enhanced_categories,
+            "total": total_amount,
+            "account_id": account_id,
+            "account_name": account_name,
+            "transaction_count": len(raw_transactions),
+            "period": period,
+            "period_label": f"{now.strftime('%B %Y')}" if period == "month" else str(now.year) if period == "year" else "All Time",
+            "average_monthly": avg_monthly,
+            "num_transactions": len(raw_transactions),
+            "insights": {
+                "total_categories": len(category_data),
+                "has_uncategorized": any(cat["name"].lower() in ['unknown', 'uncategorized', 'other', 'no category', 'general payment'] for cat in category_data),
+                "num_months": num_months,
+                "category_insights": category_insights,
+                "unknown_ratio": enhanced_categories.get('Uncategorized', {}).get('total', 0) / total_amount if total_amount > 0 and 'Uncategorized' in enhanced_categories else 0,
+                "categories_with_subcategories": list(enhanced_categories.keys()) if enhanced_categories else []
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in account spending analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def fallback_account_analysis(user_id: str, basiq_user_id: str, account_id: str, period: str):
+    """Fallback method using the User class without account filtering"""
+    try:
+        # Use the existing analysis but note it's for all accounts
+        from analysis.globals.users import User
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        # Get all transactions
+        from datetime import datetime
+        now = datetime.now()
+        
+        # Filter by period
+        if period == "month":
+            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            filtered_transactions = [tx for tx in user.transactions if tx.date >= start_date]
+        elif period == "year":
+            start_date = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            filtered_transactions = [tx for tx in user.transactions if tx.date >= start_date]
+        else:
+            filtered_transactions = user.transactions
+        
+        # Analyze
+        from analysis.globals.transactions import AllTransactions
+        transaction_group = AllTransactions(filtered_transactions)
+        categories, amounts = transaction_group.category_total_points()
+        
+        category_data = [
+            {"name": cat, "amount": amt}
+            for cat, amt in zip(categories, amounts)
+        ]
+        
+        # Group categories
+        from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
+        grouper = CategoryGrouper()
+        grouped_categories = grouper.group_categories(category_data) if category_data else {}
+        
+        return {
+            "categories": category_data,
+            "grouped_categories": grouped_categories,
+            "total": sum(amounts) if amounts else 0,
+            "account_id": account_id,
+            "transaction_count": len(filtered_transactions),
+            "period": period,
+            "period_label": f"{now.strftime('%B %Y')}" if period == "month" else str(now.year) if period == "year" else "All Time",
+            "message": "Note: Showing all accounts combined (account filtering not available)",
+            "insights": {
+                "total_categories": len(categories),
+                "has_uncategorized": "Unknown" in categories or "Uncategorized" in categories
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error in fallback analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================================================== #
+#             Advanced Analysis Endpoints              #
+# ==================================================== #
+
+@app.get("/api/analysis/trends/{user_id}")
+async def getSpendingTrends(
+    user_id: str,
+    months: int = 6,
+    account_id: Optional[str] = None
+):
+    """Get spending trends over time with predictive insights"""
+    try:
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {"error": "No bank account connected"}
+        
+        # Create user instance
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        # Get all transactions (account filtering not supported in trends yet)
+        transactions = user.transactions
+        
+        # Note: Account filtering would require fetching from Basiq API directly
+        if account_id:
+            print(f"Note: Account filtering not implemented in trends endpoint yet")
+            # For now, show all transactions with a note
+            pass
+        
+        # Group transactions by month
+        from collections import defaultdict
+        from datetime import datetime, timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        monthly_data = defaultdict(lambda: defaultdict(float))
+        category_totals = defaultdict(float)
+        
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - relativedelta(months=months)
+        
+        # Filter and group transactions
+        for tx in transactions:
+            if tx.date >= start_date:
+                month_key = tx.date.strftime('%Y-%m')
+                monthly_data[month_key][tx.category] += tx.amount
+                category_totals[tx.category] += tx.amount
+        
+        # Sort months chronologically
+        sorted_months = sorted(monthly_data.keys())
+        
+        # Prepare trend data
+        trends = []
+        for month in sorted_months:
+            month_total = sum(monthly_data[month].values())
+            trends.append({
+                "month": month,
+                "total": month_total,
+                "categories": dict(monthly_data[month])
+            })
+        
+        # Calculate statistics and predictions
+        if len(trends) >= 3:
+            # Simple linear regression for prediction
+            import numpy as np
+            
+            x = np.array(range(len(trends)))
+            y = np.array([t["total"] for t in trends])
+            
+            # Calculate trend line
+            A = np.vstack([x, np.ones(len(x))]).T
+            m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+            
+            # Predict next month
+            next_month_prediction = m * len(trends) + c
+            
+            # Calculate volatility (standard deviation)
+            volatility = np.std(y)
+            
+            insights = {
+                "trend": "increasing" if m > 0 else "decreasing",
+                "average_monthly": np.mean(y),
+                "next_month_prediction": max(0, next_month_prediction),
+                "volatility": volatility,
+                "volatility_rating": "high" if volatility > np.mean(y) * 0.3 else "moderate" if volatility > np.mean(y) * 0.15 else "low",
+                "change_rate": m,
+                "months_analyzed": len(trends)
+            }
+        else:
+            insights = {
+                "message": "Not enough data for trend analysis",
+                "months_analyzed": len(trends)
+            }
+        
+        # Identify spending patterns
+        patterns = []
+        
+        # Seasonal patterns
+        if len(trends) >= 12:
+            monthly_averages = defaultdict(list)
+            for trend in trends:
+                month_num = int(trend["month"].split("-")[1])
+                monthly_averages[month_num].append(trend["total"])
+            
+            # Find high spending months
+            avg_by_month = {k: np.mean(v) for k, v in monthly_averages.items()}
+            overall_avg = np.mean(list(avg_by_month.values()))
+            
+            high_months = [k for k, v in avg_by_month.items() if v > overall_avg * 1.2]
+            if high_months:
+                patterns.append({
+                    "type": "seasonal",
+                    "description": f"Higher spending typically in months: {high_months}"
+                })
+        
+        # Category growth patterns
+        category_trends = defaultdict(list)
+        for trend in trends:
+            for cat, amount in trend["categories"].items():
+                category_trends[cat].append(amount)
+        
+        growing_categories = []
+        declining_categories = []
+        
+        for cat, amounts in category_trends.items():
+            if len(amounts) >= 3:
+                x = np.array(range(len(amounts)))
+                y = np.array(amounts)
+                A = np.vstack([x, np.ones(len(x))]).T
+                m, _ = np.linalg.lstsq(A, y, rcond=None)[0]
+                
+                if m > np.mean(amounts) * 0.1:  # Growing by more than 10% of average
+                    growing_categories.append(cat)
+                elif m < -np.mean(amounts) * 0.1:  # Declining by more than 10% of average
+                    declining_categories.append(cat)
+        
+        if growing_categories:
+            patterns.append({
+                "type": "category_growth",
+                "description": f"Increasing spending in: {', '.join(growing_categories[:3])}"
+            })
+        
+        if declining_categories:
+            patterns.append({
+                "type": "category_decline",
+                "description": f"Decreasing spending in: {', '.join(declining_categories[:3])}"
+            })
+        
+        return {
+            "trends": trends,
+            "insights": insights,
+            "patterns": patterns,
+            "top_categories": sorted(
+                [(cat, total) for cat, total in category_totals.items()],
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]
+        }
+        
+    except Exception as e:
+        print(f"Error in trend analysis: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analysis/savings-opportunities/{user_id}")
+async def getSavingsOpportunities(user_id: str, account_id: Optional[str] = None):
+    """Identify potential savings opportunities using AI analysis"""
+    try:
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {"opportunities": [], "total_savings_potential": 0}
+        
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        # Filter by account if needed
+        transactions = user.transactions
+        if account_id:
+            transactions = [tx for tx in transactions if tx.account_id == account_id]
+        
+        # Analyze last 3 months
+        from datetime import datetime, timedelta
+        from collections import defaultdict
+        
+        three_months_ago = datetime.now() - timedelta(days=90)
+        recent_transactions = [tx for tx in transactions if tx.date >= three_months_ago]
+        
+        # Group by category and merchant
+        category_spending = defaultdict(float)
+        merchant_frequency = defaultdict(int)
+        merchant_spending = defaultdict(float)
+        subscription_candidates = []
+        
+        for tx in recent_transactions:
+            category_spending[tx.category] += tx.amount
+            merchant_frequency[tx.description] += 1
+            merchant_spending[tx.description] += tx.amount
+            
+            # Identify potential subscriptions (recurring similar amounts)
+            if 5 <= tx.amount <= 200:  # Typical subscription range
+                subscription_candidates.append(tx)
+        
+        opportunities = []
+        
+        # 1. High frequency small purchases (e.g., daily coffee)
+        for merchant, frequency in merchant_frequency.items():
+            if frequency >= 10:  # More than 3 times a month average
+                avg_amount = merchant_spending[merchant] / frequency
+                if 2 <= avg_amount <= 20:  # Small purchase range
+                    monthly_total = (frequency / 3) * avg_amount  # Average per month
+                    opportunities.append({
+                        "type": "high_frequency",
+                        "category": "Reduce frequent small purchases",
+                        "description": f"You spend ~${monthly_total:.0f}/month at {merchant[:30]}",
+                        "suggestion": f"Reducing by 50% could save ${monthly_total * 0.5:.0f}/month",
+                        "savings_potential": monthly_total * 0.5,
+                        "difficulty": "easy"
+                    })
+        
+        # 2. Category overspending (compared to typical budgets)
+        typical_budget_percentages = {
+            "eating out": 0.10,  # 10% of income
+            "entertainment": 0.05,
+            "shopping": 0.10,
+            "groceries": 0.15
+        }
+        
+        total_spending = sum(category_spending.values())
+        
+        for category, amount in category_spending.items():
+            percentage = amount / total_spending if total_spending > 0 else 0
+            
+            for budget_cat, typical_pct in typical_budget_percentages.items():
+                if budget_cat.lower() in category.lower() and percentage > typical_pct * 1.5:
+                    monthly_amount = amount / 3  # 3 months of data
+                    excess = monthly_amount - (total_spending / 3 * typical_pct)
+                    
+                    opportunities.append({
+                        "type": "category_overspending",
+                        "category": f"Reduce {category} spending",
+                        "description": f"You spend {percentage*100:.0f}% on {category} (typical: {typical_pct*100:.0f}%)",
+                        "suggestion": f"Reducing to typical levels could save ${excess:.0f}/month",
+                        "savings_potential": excess,
+                        "difficulty": "moderate"
+                    })
+        
+        # 3. Subscription audit
+        from analysis.transactionAnalysis.deepAnalysis.subscriptionDetector import SubscriptionDetector
+        detector = SubscriptionDetector()
+        detected_subscriptions = detector.detect_subscriptions(subscription_candidates)
+        
+        for sub in detected_subscriptions:
+            opportunities.append({
+                "type": "subscription",
+                "category": "Review subscriptions",
+                "description": f"Recurring charge: {sub['name']} - ${sub['amount']}/month",
+                "suggestion": "Consider if this subscription is still needed",
+                "savings_potential": sub['amount'],
+                "difficulty": "easy"
+            })
+        
+        # 4. Peak spending times
+        time_based_spending = defaultdict(float)
+        for tx in recent_transactions:
+            hour = tx.date.hour
+            if 22 <= hour or hour <= 4:  # Late night
+                time_based_spending["late_night"] += tx.amount
+            elif 6 <= hour <= 9:  # Morning
+                time_based_spending["morning"] += tx.amount
+        
+        if time_based_spending["late_night"] > total_spending * 0.1:
+            monthly_late_night = time_based_spending["late_night"] / 3
+            opportunities.append({
+                "type": "behavioral",
+                "category": "Reduce late-night spending",
+                "description": f"You spend ${monthly_late_night:.0f}/month between 10pm-4am",
+                "suggestion": "Late-night purchases are often impulsive",
+                "savings_potential": monthly_late_night * 0.7,
+                "difficulty": "moderate"
+            })
+        
+        # Sort by savings potential
+        opportunities.sort(key=lambda x: x["savings_potential"], reverse=True)
+        
+        # Calculate total potential savings
+        total_savings = sum(opp["savings_potential"] for opp in opportunities[:5])  # Top 5 realistic
+        
+        return {
+            "opportunities": opportunities[:10],  # Return top 10
+            "total_savings_potential": total_savings,
+            "analysis_period": "Last 3 months",
+            "personalized_tips": generate_savings_tips(opportunities)
+        }
+        
+    except Exception as e:
+        print(f"Error in savings analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def generate_savings_tips(opportunities):
+    """Generate personalized tips based on identified opportunities"""
+    tips = []
+    
+    # Check what types of opportunities were found
+    opportunity_types = {opp["type"] for opp in opportunities}
+    
+    if "high_frequency" in opportunity_types:
+        tips.append({
+            "title": "Batch your purchases",
+            "description": "Consider buying in bulk or preparing at home to reduce frequent small purchases"
+        })
+    
+    if "subscription" in opportunity_types:
+        tips.append({
+            "title": "Subscription audit",
+            "description": "Set a monthly reminder to review all subscriptions and cancel unused ones"
+        })
+    
+    if "category_overspending" in opportunity_types:
+        tips.append({
+            "title": "Set category budgets",
+            "description": "Use the 50/30/20 rule: 50% needs, 30% wants, 20% savings"
+        })
+    
+    if "behavioral" in opportunity_types:
+        tips.append({
+            "title": "Implement cooling-off periods",
+            "description": "Wait 24 hours before making non-essential purchases"
+        })
+    
+    return tips
+
+
+# Add this new model class to your models.py
+from pydantic import BaseModel
+class BudgetRequest(BaseModel):
+    income: float
+    savings_goal: float
+    fixed_expenses: dict[str, float]
+    
+    
+@app.post("/api/analysis/budget-recommendations/{user_id}")
+async def generateBudgetRecommendations(
+    user_id: str, 
+    budget_info: BudgetRequest,
+    account_id: Optional[str] = None
+):
+    """Generate AI-powered budget recommendations based on spending patterns"""
+    try:
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {"error": "No bank account connected"}
+        
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        # Get last 3 months of spending
+        from datetime import datetime, timedelta
+        three_months_ago = datetime.now() - timedelta(days=90)
+        
+        transactions = user.transactions
+        if account_id:
+            transactions = [tx for tx in transactions if tx.account_id == account_id]
+        
+        recent_transactions = [tx for tx in transactions if tx.date >= three_months_ago]
+        
+        # Analyze spending patterns
+        from collections import defaultdict
+        category_spending = defaultdict(float)
+        
+        for tx in recent_transactions:
+            category_spending[tx.category] += tx.amount
+        
+        # Calculate monthly averages
+        monthly_spending = {cat: amount / 3 for cat, amount in category_spending.items()}
+        total_monthly_spending = sum(monthly_spending.values())
+        
+        # Generate budget recommendations
+        available_after_fixed = budget_info.income - sum(budget_info.fixed_expenses.values())
+        available_after_savings = available_after_fixed - budget_info.savings_goal
+        
+        recommendations = {
+            "summary": {
+                "monthly_income": budget_info.income,
+                "fixed_expenses": sum(budget_info.fixed_expenses.values()),
+                "savings_goal": budget_info.savings_goal,
+                "available_for_variable": available_after_savings,
+                "current_variable_spending": total_monthly_spending,
+                "deficit_or_surplus": available_after_savings - total_monthly_spending
+            },
+            "category_budgets": {},
+            "adjustments_needed": []
+        }
+        
+        # AI-powered budget allocation
+        if available_after_savings > 0:
+            # Allocate budgets based on spending patterns and best practices
+            for category, current_spending in monthly_spending.items():
+                # Calculate recommended budget
+                percentage_of_variable = current_spending / total_monthly_spending if total_monthly_spending > 0 else 0
+                recommended = available_after_savings * percentage_of_variable
+                
+                # Apply caps based on category
+                if "eating out" in category.lower():
+                    recommended = min(recommended, available_after_savings * 0.15)
+                elif "entertainment" in category.lower():
+                    recommended = min(recommended, available_after_savings * 0.10)
+                elif "groceries" in category.lower():
+                    recommended = max(recommended, available_after_savings * 0.20)
+                
+                recommendations["category_budgets"][category] = {
+                    "current": current_spending,
+                    "recommended": recommended,
+                    "difference": recommended - current_spending,
+                    "action": "reduce" if recommended < current_spending else "maintain"
+                }
+                
+                if recommended < current_spending * 0.8:
+                    recommendations["adjustments_needed"].append({
+                        "category": category,
+                        "current": current_spending,
+                        "target": recommended,
+                        "reduction_needed": current_spending - recommended,
+                        "tips": get_category_reduction_tips(category)
+                    })
+        
+        # Add warnings if budget is unrealistic
+        if available_after_savings < total_monthly_spending * 0.5:
+            recommendations["warnings"] = [
+                "Your savings goal may be too aggressive given current spending",
+                "Consider reducing fixed expenses or increasing income"
+            ]
+        
+        return recommendations
+        
+    except Exception as e:
+        print(f"Error in budget recommendations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def get_category_reduction_tips(category: str) -> list[str]:
+    """Get specific tips for reducing spending in a category"""
+    category_lower = category.lower()
+    
+    tips_map = {
+        "eating out": [
+            "Meal prep on Sundays",
+            "Limit dining out to once per week",
+            "Use restaurant deals and happy hours"
+        ],
+        "entertainment": [
+            "Look for free local events",
+            "Share streaming subscriptions",
+            "Set a monthly entertainment budget"
+        ],
+        "shopping": [
+            "Create a 30-day wish list before buying",
+            "Unsubscribe from marketing emails",
+            "Shop with a list"
+        ],
+        "transport": [
+            "Consider carpooling",
+            "Use public transport when possible",
+            "Combine errands to save fuel"
+        ]
+    }
+    
+    for key, tips in tips_map.items():
+        if key in category_lower:
+            return tips
+    
+    return ["Track all purchases in this category", "Set a weekly budget limit"]

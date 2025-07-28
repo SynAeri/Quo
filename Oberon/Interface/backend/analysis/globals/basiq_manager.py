@@ -1,6 +1,6 @@
 import requests
 import json
-api_key = "OGZmYTY5YWYtODhlMy00YTU3LThmMzMtYTVlMGE3YzA5OGY3Ojk3YzJhODE4LWU5ZjMtNDI5MC1iNzkyLWJkZjI5ZmU5M2NhMg==" ## For Tests
+api_key = "OGZmYTY5YWYtODhlMy00YTU3LThmMzMtYTVlMGE3YzA5OGY3OjVjYjJhMmUxLWQ2MzgtNGExZi04OTUwLTU0NTVkOGQ5OWE4Ng==" ## For Tests
  
 class BasiqAPI:
     # Class that incorporates most of the Basiq API requests
@@ -29,7 +29,7 @@ class BasiqAPI:
         except Exception as e:
             print(f"Error obtaining Access Token: {e}") 
 
-    def grab_identites(self) -> dict:
+    def grab_identities(self) -> dict:
         # Retrieves identities of users (I don't really know what identities are used for but i just added it here)
         if not self.auth_token:
             print("Error when obtaining Auth Token (Grab Identities)")
@@ -44,14 +44,14 @@ class BasiqAPI:
         try:
             response = requests.get(url, headers)
             
-            identites = []
+            identities = []
             if response.status_code == 200:
                 data = response.json()
                 for identity in data['data']:
                     if identity['type'] == "identity":
-                        identites.append(identity['id'])
+                        identities.append(identity['id'])
                         
-            return identites
+            return identities,
         except Exception as e:
             print(f"Failed getting identities: {e}")
         
@@ -61,7 +61,9 @@ class BasiqAPI:
         current_data = []
         
         def insert_transaction():
+            transaction_id = i.get('id')
             description = i.get('description', 'No Description')
+            type = i.get('type')
             post_date = i.get('postDate', 'No Date')
             sub_class = i.get('subClass')
             transaction_amount = i.get('amount')
@@ -72,7 +74,9 @@ class BasiqAPI:
                 category = 'No Category'
 
             data_payload = {
+                'id' : transaction_id,
                 'description': description,
+                'type': type,
                 'category': category,
                 'date': post_date,
                 'amount': abs(float(transaction_amount)),
@@ -141,13 +145,14 @@ class BasiqAPI:
                 data = response.json()
                 # The only data we get from the account is its num, name, balance and institution (ANZ, ETC)
                 for account in data['data']:
-                    print(account)
+                    #print(account)
                     account = {
                         "accountNum": account['accountNo'],
                         "accountName": account['name'],
                         "balance": account['balance'],
                         "institution": account['institution']
                     }
+                    print(account)
                     accounts.append(account)
             
             return accounts
