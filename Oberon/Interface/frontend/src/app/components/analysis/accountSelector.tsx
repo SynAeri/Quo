@@ -1,4 +1,7 @@
+// account selector
+//
 import React, { useState, useEffect } from 'react';
+
 import { ChevronDown, Building2, CreditCard, RefreshCw, Check } from 'lucide-react';
 
 interface Account {

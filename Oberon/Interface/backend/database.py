@@ -1,15 +1,20 @@
 # All database Operations
 # Has all database logic
-
+import os
 import sqlite3
 import hashlib
-from config import DATABASE_Path as DATABASE_P # Flexibility
+from config import get_db_path # Flexibility
 
 def init_database():
     # Initialises db file and tables when server starts
     # call this f(x) once server startup
+    # Create directory if it doesn't exist (important for Railway)
+    db_path = get_db_path()
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+    conn = sqlite3.connect(db_dir)
 
-    conn = sqlite3.connect(DATABASE_P)
     # Creates database file in case it does not exist
 
     cursor = conn.cursor()
@@ -52,7 +57,7 @@ def init_database():
 
 def get_connection():
     # Connect to database
-    return sqlite3.connect(DATABASE_P)
+    return sqlite3.connect(get_db_path())
 
 def hash_password(password: str):
     # Convert password to hash
@@ -219,7 +224,7 @@ def get_database_stats():
         return {
             "total_users": user_count,
             "total_connections": connection_count,
-            "database_file": DATABASE_P
+            "database_file": get_db_path() 
         }
         
     except sqlite3.Error as e:

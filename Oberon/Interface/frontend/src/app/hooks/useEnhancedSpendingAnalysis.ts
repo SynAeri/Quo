@@ -1,5 +1,6 @@
 // app/hooks/useEnhancedSpendingAnalysis.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAccount } from '../contexts/accountContext';
 
 interface SpendingCategory {
   name: string;
@@ -20,7 +21,7 @@ interface EnhancedCategory {
 
 interface GroupedCategory {
   name: string;
-  amount: number;
+  total: number;
   percentage: number;
   categories: Array<{ name: string; amount: number }>;
 }
@@ -28,13 +29,14 @@ interface GroupedCategory {
 interface EnhancedSpendingData {
   categories: SpendingCategory[];
   enhanced_categories: Record<string, EnhancedCategory>;
-  grouped_categories?: Record<string, GroupedCategory>;
+  grouped_categories?: GroupedCategory[];
   total: number;
   period?: string;
   period_label?: string;
   average_monthly?: number;
   num_transactions?: number;
   account_id?: string;
+  account_name?: string;
   transaction_count?: number;
   monthly_breakdown?: Record<string, number>;
   insights?: {
@@ -45,6 +47,7 @@ interface EnhancedSpendingData {
     lowest_month?: string;
     num_months?: number;
     total_categories?: number;
+    total_groups?: number;
     has_uncategorized?: boolean;
   };
   message?: string;
@@ -55,278 +58,470 @@ interface CacheEntry {
   timestamp: number;
 }
 
-// Cache configuration
-const CACHE_PREFIX = 'spending_analysis_';
+interface PrefetchOptions {
+  enablePrefetch?: boolean;
+  prefetchDelay?: number;
+}
+
+// In-memory cache only (no browser storage)
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const MEMORY_CACHE = new Map<string, CacheEntry>();
+
+// Prefetch management
+const PREFETCH_QUEUE = new Set<string>();
+const PREFETCH_TIMERS = new Map<string, NodeJS.Timeout>();
 
 export function useEnhancedSpendingAnalysis(
   userId: string | undefined, 
   period: string = 'month',
-  accountId?: string | null
+  accountId?: string | null,
+  options: PrefetchOptions = { enablePrefetch: true, prefetchDelay: 2000 }
 ) {
+  // Get account from context if not provided
+  const { selectedAccountId: contextAccountId } = useAccount();
+  const effectiveAccountId = accountId !== undefined ? accountId : contextAccountId;
+  
   const [data, setData] = useState<EnhancedSpendingData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [availableAccounts, setAvailableAccounts] = useState<Array<{id: string, name: string}>>([]);
+  
+  // Track if this is the initial load
+  const isInitialLoadRef = useRef(true);
+  
+  // Track previous values to detect changes
+  const prevAccountIdRef = useRef(effectiveAccountId);
+  const prevPeriodRef = useRef(period);
+  const prevUserIdRef = useRef(userId);
 
   // Generate cache key including account ID
-  const getCacheKey = useCallback(() => {
-    const accountKey = accountId || 'all';
-    return `${CACHE_PREFIX}${userId}_${period}_${accountKey}`;
-  }, [userId, period, accountId]);
+  const getCacheKey = useCallback((accId?: string | null, per?: string) => {
+    const accountKey = accId !== undefined ? (accId || 'all') : (effectiveAccountId || 'all');
+    const periodKey = per || period;
+    return `spending_${userId}_${periodKey}_${accountKey}`;
+  }, [userId, period, effectiveAccountId]);
 
   // Check if cache is valid
   const isCacheValid = (timestamp: number): boolean => {
     return Date.now() - timestamp < CACHE_DURATION;
   };
 
-  // Get from cache (memory first, then sessionStorage)
-  const getFromCache = useCallback((): CacheEntry | null => {
-    const cacheKey = getCacheKey();
+  // Get from memory cache
+  const getFromCache = useCallback((accId?: string | null): CacheEntry | null => {
+    const cacheKey = getCacheKey(accId);
+    const cached = MEMORY_CACHE.get(cacheKey);
     
-    // Check memory cache first
-    const memoryCache = MEMORY_CACHE.get(cacheKey);
-    if (memoryCache && isCacheValid(memoryCache.timestamp)) {
-      return memoryCache;
+    if (cached && isCacheValid(cached.timestamp)) {
+      console.log('Using cached data for:', cacheKey);
+      return cached;
     }
     
-    // Check sessionStorage
-    try {
-      const stored = sessionStorage.getItem(cacheKey);
-      if (stored) {
-        const parsed: CacheEntry = JSON.parse(stored);
-        if (isCacheValid(parsed.timestamp)) {
-          // Also update memory cache
-          MEMORY_CACHE.set(cacheKey, parsed);
-          return parsed;
-        } else {
-          // Clean up expired cache
-          sessionStorage.removeItem(cacheKey);
-        }
-      }
-    } catch (e) {
-      console.error('Error reading from cache:', e);
+    // Clean up expired entry
+    if (cached) {
+      MEMORY_CACHE.delete(cacheKey);
     }
     
     return null;
   }, [getCacheKey]);
 
-  // Save to cache (both memory and sessionStorage)
-  const saveToCache = useCallback((data: EnhancedSpendingData) => {
-    const cacheKey = getCacheKey();
+  // Save to memory cache
+  const saveToCache = useCallback((responseData: EnhancedSpendingData, accId?: string | null) => {
+    const cacheKey = getCacheKey(accId);
     const cacheEntry: CacheEntry = {
-      data,
+      data: responseData,
       timestamp: Date.now()
     };
     
-    // Save to memory cache
     MEMORY_CACHE.set(cacheKey, cacheEntry);
-    
-    // Save to sessionStorage
-    try {
-      sessionStorage.setItem(cacheKey, JSON.stringify(cacheEntry));
-    } catch (e) {
-      console.error('Error saving to cache:', e);
-      // If quota exceeded, clear old entries
-      clearOldCacheEntries();
-    }
+    console.log('Cached data for:', cacheKey);
   }, [getCacheKey]);
 
-  // Clear old cache entries if storage is full
-  const clearOldCacheEntries = () => {
-    const keys = Object.keys(sessionStorage);
-    const cacheKeys = keys.filter(key => key.startsWith(CACHE_PREFIX));
-    
-    // Sort by timestamp and remove oldest half
-    const entries = cacheKeys.map(key => {
-      try {
-        const data = JSON.parse(sessionStorage.getItem(key) || '{}') as CacheEntry;
-        return { key, timestamp: data.timestamp || 0 };
-      } catch {
-        return { key, timestamp: 0 };
-      }
-    });
-    
-    entries.sort((a, b) => a.timestamp - b.timestamp);
-    const toRemove = Math.floor(entries.length / 2);
-    
-    for (let i = 0; i < toRemove; i++) {
-      sessionStorage.removeItem(entries[i].key);
-    }
-  };
-
-  // Clear all cache for a user (useful after new transactions)
+  // Clear cache for current user
   const clearUserCache = useCallback(() => {
     if (!userId) return;
     
-    // Clear memory cache
+    console.log('Clearing cache for user:', userId);
     const keysToDelete: string[] = [];
+    
     MEMORY_CACHE.forEach((_, key) => {
-      if (key.includes(userId)) {
+      if (key.includes(`_${userId}_`)) {
         keysToDelete.push(key);
       }
     });
-    keysToDelete.forEach(key => MEMORY_CACHE.delete(key));
     
-    // Clear sessionStorage
-    const keys = Object.keys(sessionStorage);
-    keys.forEach(key => {
-      if (key.startsWith(CACHE_PREFIX) && key.includes(userId)) {
-        sessionStorage.removeItem(key);
-      }
+    keysToDelete.forEach(key => {
+      console.log('Deleting cache key:', key);
+      MEMORY_CACHE.delete(key);
     });
+    
+    // Clear prefetch timers
+    PREFETCH_TIMERS.forEach(timer => clearTimeout(timer));
+    PREFETCH_TIMERS.clear();
+    PREFETCH_QUEUE.clear();
+    
+    // Also clear current data to force UI update
+    setData(null);
   }, [userId]);
 
-  const fetchSpendingData = async (forceRefresh = false) => {
-    if (!userId) return;
+  // Fetch available accounts for prefetching
+  const fetchAvailableAccounts = useCallback(async () => {
+    if (!userId || !options.enablePrefetch) return;
+    
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/accounts/${userId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const accounts = data.accounts || [];
+        setAvailableAccounts(accounts);
+        
+        // Schedule prefetch for accounts
+        if (accounts.length > 0 && options.enablePrefetch) {
+          schedulePrefetch(accounts);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching accounts for prefetch:', error);
+    }
+  }, [userId, options.enablePrefetch]);
 
-    // Check cache first (unless force refresh)
-    if (!forceRefresh) {
+  // Schedule prefetching of other accounts
+  const schedulePrefetch = useCallback((accounts: Array<{id: string, name: string}>) => {
+    if (!options.enablePrefetch) return;
+    
+    // Clear existing timers for this user
+    const userTimerPrefix = `${userId}_${period}_`;
+    PREFETCH_TIMERS.forEach((timer, key) => {
+      if (key.startsWith(userTimerPrefix)) {
+        clearTimeout(timer);
+        PREFETCH_TIMERS.delete(key);
+      }
+    });
+    
+    // Schedule prefetch for each account not currently selected
+    accounts.forEach((account, index) => {
+      const timerKey = `${userTimerPrefix}${account.id}`;
+      
+      // Don't prefetch the currently selected account
+      if (account.id === effectiveAccountId) return;
+      
+      // Check if already cached
+      if (getFromCache(account.id)) return;
+      
+      // Stagger prefetch requests to avoid overloading
+      const delay = options.prefetchDelay! + (index * 500);
+      
+      const timer = setTimeout(() => {
+        prefetchAccountData(account.id);
+        PREFETCH_TIMERS.delete(timerKey);
+      }, delay);
+      
+      PREFETCH_TIMERS.set(timerKey, timer);
+    });
+    
+    // Also prefetch "all accounts" view if not currently selected
+    if (effectiveAccountId !== null && !getFromCache(null)) {
+      const timerKey = `${userTimerPrefix}all`;
+      const timer = setTimeout(() => {
+        prefetchAccountData(null);
+        PREFETCH_TIMERS.delete(timerKey);
+      }, options.prefetchDelay!);
+      
+      PREFETCH_TIMERS.set(timerKey, timer);
+    }
+  }, [userId, period, effectiveAccountId, options.enablePrefetch, options.prefetchDelay, getFromCache]);
+
+  // Prefetch data for a specific account
+  const prefetchAccountData = useCallback(async (accountIdToPrefetch: string | null) => {
+    const cacheKey = getCacheKey(accountIdToPrefetch);
+    
+    // Skip if already in queue or cached
+    if (PREFETCH_QUEUE.has(cacheKey) || getFromCache(accountIdToPrefetch)) {
+      return;
+    }
+    
+    PREFETCH_QUEUE.add(cacheKey);
+    console.log(`🔄 Prefetching data for account: ${accountIdToPrefetch || 'all'}`);
+    
+    try {
+      const params = new URLSearchParams({
+        period: period,
+        group_categories: 'true'
+      });
+      
+      if (accountIdToPrefetch) {
+        params.append('account_id', accountIdToPrefetch);
+      }
+
+      const endpoint = `/api/analysis/groupedSpendingByPeriod/${userId}?${params}`;
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}${endpoint}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('authToken') : ''}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const responseData = await response.json();
+        saveToCache(responseData, accountIdToPrefetch);
+        console.log(`✅ Prefetched account: ${accountIdToPrefetch || 'all'}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error prefetching account ${accountIdToPrefetch}:`, error);
+    } finally {
+      PREFETCH_QUEUE.delete(cacheKey);
+    }
+  }, [userId, period, getCacheKey, getFromCache, saveToCache]);
+
+  const fetchSpendingData = useCallback(async (forceRefresh = false, skipCache = false) => {
+    if (!userId) {
+      console.log('No userId, skipping fetch');
+      setIsLoading(false);
+      return;
+    }
+
+    // Check cache first (unless force refresh or skip cache)
+    if (!forceRefresh && !skipCache && !isRefreshing) {
       const cached = getFromCache();
       if (cached) {
         setData(cached.data);
         setError(null);
+        setIsLoading(false);
+        
+        // Still trigger prefetch for other accounts
+        if (options.enablePrefetch && availableAccounts.length === 0) {
+          fetchAvailableAccounts();
+        }
         return;
       }
     }
 
-    setIsLoading(!data); // Only show loading if no cached data
-    setIsRefreshing(forceRefresh);
+    console.log('Fetching spending data:', { userId, period, accountId: effectiveAccountId, forceRefresh, skipCache });
+    
+    if (forceRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
-      // Determine endpoint based on whether account is selected
-      let endpoint: string;
-      if (accountId) {
-        // Use account-specific endpoint
-        endpoint = `/api/analysis/spendingByAccount/${userId}/${accountId}?period=${period}`;
-      } else {
-        // Use the general grouped endpoint
-        endpoint = `/api/analysis/groupedSpendingByPeriod/${userId}?period=${period}&group_categories=true`;
+      // Build the request URL
+      const params = new URLSearchParams({
+        period: period,
+        group_categories: 'true'
+      });
+      
+      if (effectiveAccountId) {
+        params.append('account_id', effectiveAccountId);
+      }
+
+      const endpoint = `/api/analysis/groupedSpendingByPeriod/${userId}?${params}`;
+      
+      console.log('Fetching from:', endpoint);
+      
+      // Get auth token - handle if it doesn't exist
+      const authToken = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+      if (!authToken) {
+        throw new Error('No authentication token found');
       }
         
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}${endpoint}`,
         {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+            'Authorization': `Bearer ${authToken}`,
           },
         }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.detail || 'Failed to fetch spending data');
+        throw new Error(errorData?.detail || `HTTP ${response.status}: Failed to fetch spending data`);
       }
 
-      const spendingData = await response.json();
+      const responseData = await response.json();
       
-      console.log('API Response for period:', period, 'account:', accountId, spendingData);
+      console.log('API Response:', {
+        categories: responseData.categories?.length || 0,
+        grouped_categories: Array.isArray(responseData.grouped_categories) ? responseData.grouped_categories.length : 0,
+        total: responseData.total,
+        account: responseData.account_name || effectiveAccountId || 'all'
+      });
       
-      // Check if there's a message indicating no data
-      if (spendingData.message && (!spendingData.categories || spendingData.categories.length === 0)) {
-        setError(spendingData.message);
-      } else if (!spendingData.categories) {
-        // Handle case where categories is missing
-        console.error('Invalid response structure:', spendingData);
-        setError('Invalid data format received from server');
-      } else {
-        // Save to cache on successful fetch
-        saveToCache(spendingData);
+      // Validate response
+      if (!responseData.categories || !Array.isArray(responseData.categories)) {
+        console.error('Invalid response - categories missing or not an array:', responseData);
+        throw new Error('Invalid data format received from server');
       }
       
-      setData(spendingData);
+      // Save to cache on successful fetch
+      saveToCache(responseData);
+      setData(responseData);
+      
+      // Trigger prefetch for other accounts after successful load
+      if (options.enablePrefetch && availableAccounts.length === 0) {
+        fetchAvailableAccounts();
+      }
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      console.error('Error fetching enhanced spending data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      console.error('Error fetching spending data:', err);
+      setError(errorMessage);
+      
+      // Clear data on error
+      setData(null);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [userId, period, effectiveAccountId, getFromCache, saveToCache, options.enablePrefetch, fetchAvailableAccounts, availableAccounts.length]);
 
-  // Initial fetch
+  // Initial load effect
   useEffect(() => {
-    if (userId) {
-      fetchSpendingData();
+    if (isInitialLoadRef.current && userId) {
+      console.log('Initial load - fetching data immediately');
+      isInitialLoadRef.current = false;
+      // Skip cache on initial load to ensure fresh data
+      fetchSpendingData(false, true);
     }
-  }, [userId, period, accountId]);
+  }, [userId, fetchSpendingData]);
 
-  // Listen for account changes
+  // Handle changes in userId, period, or accountId
   useEffect(() => {
-    const handleAccountChange = (event: CustomEvent) => {
-      const newAccountId = event.detail.accountId;
-      // Force refresh when account changes
-      if (newAccountId !== accountId) {
+    // Skip if this is the initial load (handled above)
+    if (isInitialLoadRef.current) return;
+    
+    const userChanged = prevUserIdRef.current !== userId;
+    const periodChanged = prevPeriodRef.current !== period;
+    const accountChanged = prevAccountIdRef.current !== effectiveAccountId;
+    
+    if (userChanged || accountChanged || periodChanged) {
+      console.log('Dependencies changed:', {
+        userChanged,
+        periodChanged,
+        accountChanged,
+        newValues: { userId, period, accountId: effectiveAccountId }
+      });
+      
+      // Update refs
+      prevUserIdRef.current = userId;
+      prevPeriodRef.current = period;
+      prevAccountIdRef.current = effectiveAccountId;
+      
+      if (userChanged || accountChanged) {
+        // Check cache first for account changes
+        const cached = getFromCache();
+        if (cached && !userChanged) {
+          // Use cached data immediately
+          setData(cached.data);
+          setError(null);
+          setIsLoading(false);
+          console.log('Used cached data for account switch');
+          
+          // Re-schedule prefetch for other accounts
+          if (options.enablePrefetch && availableAccounts.length > 0) {
+            schedulePrefetch(availableAccounts);
+          }
+        } else {
+          // Clear old data and fetch new
+          setData(null);
+          setIsLoading(true);
+          
+          if (userChanged) {
+            clearUserCache();
+          }
+          fetchSpendingData(true);
+        }
+      } else if (periodChanged) {
+        // For period changes, check cache first
+        const cached = getFromCache();
+        if (cached) {
+          setData(cached.data);
+          setIsLoading(false);
+        } else {
+          setIsLoading(true);
+          fetchSpendingData(false);
+        }
+        
+        // Clear and reschedule prefetch for new period
+        PREFETCH_TIMERS.forEach(timer => clearTimeout(timer));
+        PREFETCH_TIMERS.clear();
+        if (options.enablePrefetch && availableAccounts.length > 0) {
+          schedulePrefetch(availableAccounts);
+        }
+      }
+    }
+  }, [userId, period, effectiveAccountId, fetchSpendingData, clearUserCache, getFromCache, options.enablePrefetch, availableAccounts, schedulePrefetch]);
+
+  // Listen for external account changes
+  useEffect(() => {
+    const handleAccountChange = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const newAccountId = customEvent.detail?.accountId;
+      console.log('External account change event:', newAccountId);
+      
+      // Check if we have cached data for this account
+      const cached = getFromCache(newAccountId);
+      if (cached) {
+        // Use cached data immediately
+        setData(cached.data);
+        setError(null);
+        setIsLoading(false);
+        console.log('Used cached data for external account change');
+      } else {
+        // Set loading state and fetch
+        setIsLoading(true);
+        setData(null);
+        clearUserCache();
         fetchSpendingData(true);
       }
     };
 
-    window.addEventListener('accountChanged', handleAccountChange as EventListener);
+    window.addEventListener('accountChanged', handleAccountChange);
+    window.addEventListener('accountChangedFromDashboard', handleAccountChange);
     
     return () => {
-      window.removeEventListener('accountChanged', handleAccountChange as EventListener);
+      window.removeEventListener('accountChanged', handleAccountChange);
+      window.removeEventListener('accountChangedFromDashboard', handleAccountChange);
     };
-  }, [accountId]);
+  }, [fetchSpendingData, clearUserCache, getFromCache]);
 
-  // Prefetch other periods in the background
-  useEffect(() => {
-    if (!userId || !data) return;
-    
-    // Prefetch other periods after a delay
-    const prefetchTimer = setTimeout(() => {
-      const periods = ['month', 'year', 'all'];
-      periods.forEach(p => {
-        if (p !== period) {
-          // Check if already cached
-          const accountKey = accountId || 'all';
-          const cacheKey = `${CACHE_PREFIX}${userId}_${p}_${accountKey}`;
-          const cached = MEMORY_CACHE.get(cacheKey) || 
-                       (sessionStorage.getItem(cacheKey) ? JSON.parse(sessionStorage.getItem(cacheKey)!) : null);
-          
-          if (!cached || !isCacheValid(cached.timestamp)) {
-            // Prefetch in background
-            let prefetchEndpoint: string;
-            if (accountId) {
-              prefetchEndpoint = `/api/analysis/spendingByAccount/${userId}/${accountId}?period=${p}`;
-            } else {
-              prefetchEndpoint = `/api/analysis/groupedSpendingByPeriod/${userId}?period=${p}&group_categories=true`;
-            }
-              
-            fetch(`${process.env.NEXT_PUBLIC_API_URL}${prefetchEndpoint}`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-              },
-            })
-            .then(res => res.json())
-            .then(prefetchedData => {
-              const prefetchEntry: CacheEntry = {
-                data: prefetchedData,
-                timestamp: Date.now()
-              };
-              MEMORY_CACHE.set(cacheKey, prefetchEntry);
-              try {
-                sessionStorage.setItem(cacheKey, JSON.stringify(prefetchEntry));
-              } catch (e) {
-                console.error('Error caching prefetched data:', e);
-              }
-            })
-            .catch(err => console.error('Prefetch error:', err));
-          }
-        }
-      });
-    }, 2000); // Wait 2 seconds before prefetching
-    
-    return () => clearTimeout(prefetchTimer);
-  }, [userId, period, accountId, data]);
+  const refetch = useCallback(() => {
+    console.log('Manual refetch triggered');
+    const cacheKey = getCacheKey();
+    MEMORY_CACHE.delete(cacheKey);
+    fetchSpendingData(true);
+  }, [getCacheKey, fetchSpendingData]);
+
+  // Check if data is cached for a specific account
+  const isAccountCached = useCallback((accountId: string | null) => {
+    return !!getFromCache(accountId);
+  }, [getFromCache]);
 
   return { 
     data, 
     isLoading, 
     isRefreshing,
     error, 
-    refetch: () => fetchSpendingData(true),
-    clearCache: clearUserCache 
+    refetch,
+    clearCache: clearUserCache,
+    // Prefetch status
+    prefetchStatus: {
+      availableAccounts,
+      isCached: isAccountCached,
+      prefetchQueue: Array.from(PREFETCH_QUEUE)
+    }
   };
 }

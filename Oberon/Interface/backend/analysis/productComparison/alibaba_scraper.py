@@ -1,3 +1,5 @@
+# Alibaba_Scraper
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -40,80 +42,95 @@ import re
 # amount = 20.0
 def scrape_alibaba(search_terms, amount):
     # initialises the cheapest price to the input amount (actual transaction price)
-    cheapest_product_price = amount
-
-    start_time = time.time()
-
-    driver = webdriver.Chrome()
-    driver.get("https://www.alibaba.com")
-
-    # waits until search bar input element is loaded then assigns it to search_input
-    search_input = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input.search-bar-input")))
-
-    # clears search input box
-    search_input.clear()
-
-    # enters desired input (product name / description) into search box
-    search_input.send_keys(f'{search_terms}')
-
-    # press enter key to search
-    search_input.send_keys(Keys.RETURN)
-
-    # gets wrapper of each product 
-    products = driver.find_elements(By.CSS_SELECTOR, ".searchx-offer-item")
-    cheapest_product = []
-    g = 0
-    for i in products:
-        # gets name, price, and rating of each item
-        name = i.find_element(By.CSS_SELECTOR, "h2")
-        price = i.find_element(By.CSS_SELECTOR, ".search-card-e-price-main")
-        link_element = i.find_element(By.CSS_SELECTOR, ".search-card-e-slider__link")
-        link = link_element.get_attribute("href")
-
-        # skips products that aren't orderable (they have a price range + you need to contact seller to buy)
-        if '-' in price.text:
-            continue
-
-        # checks if rating is available. if not, skips that product
-        try:
-            rating_container = i.find_element(By.CSS_SELECTOR, ".search-card-e-review")
-            # makes the rating into a float and only takes the first 3 chars (e.g. 4.4)
-            rating = float(rating_container.text[:3])
-
-        except:
-            continue
+    cheapest_products = []
+    driver = None
+    
+    try:
+        # Setup Chrome driver
+        driver = webdriver.Chrome()
+        driver.get("https://www.alibaba.com")
         
-        # skips items with rating under the input minimum rating
-        # if rating < minimum_rating:
-            # continue
-
-        # removes A$ from price and converts to a float so we can compare with transaction price
-        price_value = float(re.sub(r'[^\d.]', '', price.text))  
-        if (price_value < cheapest_product_price):
-            cheapest_product_price = price_value
-            cheapest_product_name = name.text
-            cheapest_product_rating = rating
-            cheapest_product.append({
-                'price': price_value,
-                'name': name.text,
-                'rating': rating,
-                'link': link
-
-            })
-        print(name.text)
-        print(price_value)
-        print(rating)
-        print('\n')
-        g = g + 1
+        # Wait for search bar and search
+        search_input = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input.search-bar-input"))
+        )
         
-        # print(f'{g} products found above {minimum_rating} rating')
-
-        return cheapest_product
-
-    driver.close()
-
-    # class that each product is in: class="fy23-search-card m-gallery-product-item-v2 J-search-card-wrapper fy23-gallery-card searchx-offer-item"
-
-    print(f'The cheapest product we found was {cheapest_product_name}, with a price of ${cheapest_product_price} and a rating of {cheapest_product_rating}')
-    print(f'\nHere is the link to this product: \n{link}')
-    print("Time taken for process --- %s seconds ---" % (time.time() - start_time))
+        search_input.clear()
+        search_input.send_keys(search_terms)
+        search_input.send_keys(Keys.RETURN)
+        
+        # Wait for results to load
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".organic-list"))
+        )
+        
+        # Get products
+        products = driver.find_elements(By.CSS_SELECTOR, ".fy23-search-card")[:20]  # Limit to 20
+        
+        print(f"Found {len(products)} products on page")
+        
+        for product in products:
+            try:
+                # Get product details
+                name_elem = product.find_element(By.CSS_SELECTOR, "h2")
+                price_elem = product.find_element(By.CSS_SELECTOR, ".search-card-e-price-main")
+                
+                # Skip price ranges
+                if '-' in price_elem.text:
+                    continue
+                
+                # Extract price
+                price_text = price_elem.text
+                price_value = float(re.sub(r'[^\d.]', '', price_text))
+                
+                # Only include if cheaper than transaction amount
+                if price_value < amount:
+                    # Get link
+                    link = "#"
+                    try:
+                        link_elem = product.find_element(By.CSS_SELECTOR, "a")
+                        link = link_elem.get_attribute("href")
+                        if not link.startswith("http"):
+                            link = "https://www.alibaba.com" + link
+                    except:
+                        pass
+                    
+                    # Get rating if available
+                    rating = 0.0
+                    try:
+                        rating_elem = product.find_element(By.CSS_SELECTOR, ".search-card-e-review")
+                        rating_text = rating_elem.text
+                        if rating_text:
+                            rating = float(rating_text[:3])
+                    except:
+                        pass
+                    
+                    product_data = {
+                        'name': name_elem.text[:150],  # Limit name length
+                        'price': price_value,
+                        'rating': rating,
+                        'link': link
+                    }
+                    
+                    cheapest_products.append(product_data)
+                    print(f"Added product: {product_data['name'][:50]}... - ${price_value}")
+                    
+            except Exception as e:
+                print(f"Error parsing product: {e}")
+                continue
+        
+        # Sort by price
+        cheapest_products.sort(key=lambda x: x['price'])
+        
+        print(f"Found {len(cheapest_products)} cheaper alternatives")
+        
+        # Return top 5 cheapest
+        return cheapest_products[:5]
+        
+    except Exception as e:
+        print(f"Scraping error: {e}")
+        return []
+        
+    finally:
+        if driver:
+            driver.quit()

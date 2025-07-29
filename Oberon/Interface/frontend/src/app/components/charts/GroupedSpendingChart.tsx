@@ -2,7 +2,7 @@
 'use client';
 import { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Info, AlertCircle } from 'lucide-react';
 
 interface GroupedCategory {
   name: string;
@@ -12,7 +12,7 @@ interface GroupedCategory {
 }
 
 interface GroupedSpendingChartProps {
-  groupedData: Record<string, GroupedCategory> | null | undefined;
+  groupedData: GroupedCategory[] | Record<string, any> | null | undefined;
   total: number;
   insights?: any;
 }
@@ -30,6 +30,13 @@ export default function GroupedSpendingChart({
 }: GroupedSpendingChartProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<'pie' | 'bar'>('pie');
+
+  console.log('GroupedSpendingChart received:', {
+    groupedData,
+    isArray: Array.isArray(groupedData),
+    type: typeof groupedData,
+    total
+  });
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-AU', {
@@ -50,8 +57,9 @@ export default function GroupedSpendingChart({
     setExpandedGroups(newExpanded);
   };
 
-  // Handle different data formats
+  // Handle empty or invalid data
   if (!groupedData || typeof groupedData !== 'object') {
+    console.log('No grouped data available');
     return (
       <div className="p-8 text-center">
         <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -61,74 +69,65 @@ export default function GroupedSpendingChart({
     );
   }
 
-  // Convert data to the expected format
+  // Process the data into a consistent format
   let processedData: any[] = [];
   
-  // Check if groupedData is already in array format
+  // If it's already an array, use it directly
   if (Array.isArray(groupedData)) {
-    processedData = groupedData;
-  } else {
-    // Convert object entries to array format
-    processedData = Object.entries(groupedData).map(([name, data]) => {
-      // Handle different possible data structures
-      if (typeof data === 'object' && data !== null) {
-        // If data has the expected structure
-        if ('total' in data || 'amount' in data) {
-          return {
-            name,
-            value: data.total || data.amount || 0,
-            percentage: data.percentage || ((data.total || data.amount || 0) / total * 100),
-            categories: data.categories || []
-          };
+    console.log('Processing array format data');
+    processedData = groupedData.map(item => ({
+      name: item.name || 'Unknown',
+      value: item.total || 0,
+      percentage: item.percentage || ((item.total || 0) / total * 100),
+      categories: item.categories || []
+    }));
+  } else if (typeof groupedData === 'object') {
+    // Handle legacy object format
+    console.log('Processing object format data');
+    processedData = Object.entries(groupedData).map(([groupName, groupData]: [string, any]) => {
+      let groupTotal = 0;
+      let groupCategories = [];
+      
+      // Handle different possible structures
+      if (groupData && typeof groupData === 'object') {
+        if (groupData.total !== undefined) {
+          // New format with total property
+          groupTotal = groupData.total;
+          groupCategories = groupData.subcategories || groupData.categories || [];
+        } else if (Array.isArray(groupData)) {
+          // Old format - array of categories
+          groupTotal = groupData.reduce((sum, cat) => sum + (cat.amount || 0), 0);
+          groupCategories = groupData;
         }
-        // If data is a simple {name, amount, percentage} object
-        else if ('name' in data && 'amount' in data) {
-          return {
-            name: data.name,
-            value: data.amount,
-            percentage: data.percentage || (data.amount / total * 100),
-            categories: []
-          };
-        }
-      }
-      // If data is just a number
-      else if (typeof data === 'number') {
-        return {
-          name,
-          value: data,
-          percentage: (data / total * 100),
-          categories: []
-        };
       }
       
-      // Fallback
       return {
-        name,
-        value: 0,
-        percentage: 0,
-        categories: []
+        name: groupName,
+        value: groupTotal,
+        percentage: (groupTotal / total * 100),
+        categories: groupCategories
       };
     });
   }
   
-  // Filter out invalid entries
-  processedData = processedData.filter(item => item && item.value > 0);
+  // Filter out empty groups and sort by value
+  processedData = processedData
+    .filter(item => item && item.value > 0)
+    .sort((a, b) => b.value - a.value);
+  
+  console.log('Processed data:', processedData);
   
   if (processedData.length === 0) {
     return (
       <div className="p-8 text-center">
-        <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+        <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-4" />
         <p className="text-gray-600">No spending data to display</p>
+        <p className="text-sm text-gray-500 mt-2">
+          {total > 0 ? 'Categories could not be grouped' : 'No transactions found for this period'}
+        </p>
       </div>
     );
   }
-
-  const chartData = processedData
-    .sort((a, b) => b.value - a.value)
-    .map(item => ({
-      ...item,
-      percentage: item.percentage || (item.value / total * 100)
-    }));
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -138,7 +137,7 @@ export default function GroupedSpendingChart({
         <div className="bg-white p-3 shadow-lg rounded-lg border">
           <p className="font-semibold">{data.name}</p>
           <p className="text-sm">{formatCurrency(data.value)}</p>
-          <p className="text-xs text-gray-600">{(data.payload.percentage || 0).toFixed(1)}% of total</p>
+          <p className="text-xs text-gray-600">{data.payload.percentage.toFixed(1)}% of total</p>
           {data.payload.categories && data.payload.categories.length > 0 && (
             <p className="text-xs text-blue-600 mt-1">
               Contains {data.payload.categories.length} categories
@@ -149,6 +148,8 @@ export default function GroupedSpendingChart({
     }
     return null;
   };
+
+  const chartData = processedData;
 
   return (
     <div className="w-full">
@@ -198,11 +199,11 @@ export default function GroupedSpendingChart({
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-96 space-y-2">
+            <div className="h-96 space-y-2 overflow-y-auto">
               {chartData.map((group, index) => (
                 <div key={group.name} className="flex items-center gap-2">
                   <div 
-                    className="w-4 h-4 rounded" 
+                    className="w-4 h-4 rounded flex-shrink-0" 
                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                   />
                   <span className="w-32 text-sm truncate">{group.name}</span>
@@ -210,7 +211,7 @@ export default function GroupedSpendingChart({
                     <div
                       className="absolute inset-y-0 left-0 rounded-full"
                       style={{
-                        width: `${group.percentage}%`,
+                        width: `${Math.min(group.percentage, 100)}%`,
                         backgroundColor: COLORS[index % COLORS.length]
                       }}
                     />
@@ -218,6 +219,9 @@ export default function GroupedSpendingChart({
                       {formatCurrency(group.value)}
                     </span>
                   </div>
+                  <span className="text-xs text-gray-600 w-12 text-right">
+                    {group.percentage.toFixed(0)}%
+                  </span>
                 </div>
               ))}
             </div>
@@ -230,16 +234,21 @@ export default function GroupedSpendingChart({
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {chartData.map((group, index) => {
               const isExpanded = expandedGroups.has(group.name);
+              const hasCategories = group.categories && Array.isArray(group.categories) && group.categories.length > 0;
               
               return (
                 <div key={group.name} className="border rounded-lg">
                   <div 
-                    className="flex items-center gap-2 p-3 cursor-pointer hover:bg-gray-50"
-                    onClick={() => toggleGroup(group.name)}
+                    className={`flex items-center gap-2 p-3 ${hasCategories ? 'cursor-pointer hover:bg-gray-50' : ''}`}
+                    onClick={() => hasCategories && toggleGroup(group.name)}
                   >
-                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {hasCategories ? (
+                      isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+                    ) : (
+                      <div className="w-4" />
+                    )}
                     <div 
-                      className="w-4 h-4 rounded" 
+                      className="w-4 h-4 rounded flex-shrink-0" 
                       style={{ backgroundColor: COLORS[index % COLORS.length] }}
                     />
                     <span className="text-sm flex-1 font-medium">{group.name}</span>
@@ -247,13 +256,13 @@ export default function GroupedSpendingChart({
                   </div>
                   
                   {/* Expanded Categories */}
-                  {isExpanded && group.categories && Array.isArray(group.categories) && group.categories.length > 0 && (
+                  {isExpanded && hasCategories && (
                     <div className="px-3 pb-3">
-                      <div className="ml-6 space-y-1 border-l-2 pl-3">
+                      <div className="ml-8 space-y-1 border-l-2 pl-3">
                         {group.categories.map((cat: any, catIndex: number) => (
                           <div key={catIndex} className="flex items-center justify-between text-xs text-gray-600">
-                            <span>{cat.name || cat}</span>
-                            <span>{formatCurrency(cat.amount || 0)}</span>
+                            <span className="truncate mr-2">{cat.name || 'Unknown'}</span>
+                            <span className="font-medium">{formatCurrency(cat.amount || 0)}</span>
                           </div>
                         ))}
                       </div>
@@ -263,21 +272,84 @@ export default function GroupedSpendingChart({
               );
             })}
           </div>
+          
+          {/* Summary */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Total Groups:</span>
+              <span className="font-semibold">{chartData.length}</span>
+            </div>
+            <div className="flex justify-between text-sm mt-1">
+              <span className="text-gray-600">Total Spending:</span>
+              <span className="font-semibold">{formatCurrency(total)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Insights */}
-      {insights && insights.category_insights && Object.keys(insights.category_insights).length > 0 && (
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-            <Info className="w-4 h-4" />
-            Insights
-          </h3>
-          <div className="space-y-1 text-sm text-blue-800">
-            {Object.entries(insights.category_insights).map(([key, value]: [string, any]) => (
-              <p key={key}>• {value}</p>
-            ))}
-          </div>
+      {insights && (
+        <div className="mt-6">
+          {/* Category Insights */}
+          {insights.category_insights && (
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                <Info className="w-4 h-4" />
+                Category Insights
+              </h3>
+              <div className="space-y-2 text-sm text-blue-800">
+                {/* Largest Category */}
+                {insights.category_insights.largest_super_category && (
+                  <div>
+                    <p className="font-medium">Largest Category:</p>
+                    <p className="ml-2">
+                      • {insights.category_insights.largest_super_category.name} - {formatCurrency(insights.category_insights.largest_super_category.amount)} ({insights.category_insights.largest_super_category.percentage?.toFixed(1)}%)
+                    </p>
+                  </div>
+                )}
+                
+                {/* Most Diverse Category */}
+                {insights.category_insights.most_diverse_category && (
+                  <div>
+                    <p className="font-medium">Most Diverse Category:</p>
+                    <p className="ml-2">
+                      • {insights.category_insights.most_diverse_category.name} ({insights.category_insights.most_diverse_category.num_subcategories} subcategories)
+                    </p>
+                  </div>
+                )}
+                
+                {/* Concentration Score */}
+                {insights.category_insights.concentration_score !== undefined && (
+                  <div>
+                    <p className="font-medium">Spending Concentration:</p>
+                    <p className="ml-2">
+                      • {insights.category_insights.concentration_score > 0.5 ? 'Highly concentrated' : insights.category_insights.concentration_score > 0.3 ? 'Moderately concentrated' : 'Well distributed'} (Score: {insights.category_insights.concentration_score.toFixed(2)})
+                    </p>
+                  </div>
+                )}
+                
+                {/* Recommendations */}
+                {insights.category_insights.recommendations && insights.category_insights.recommendations.length > 0 && (
+                  <div>
+                    <p className="font-medium">Recommendations:</p>
+                    {insights.category_insights.recommendations.map((rec: string, idx: number) => (
+                      <p key={idx} className="ml-2">• {rec}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* General Insights */}
+          {insights.has_uncategorized && (
+            <div className="p-4 bg-amber-50 rounded-lg mt-3">
+              <p className="text-sm text-amber-800">
+                <AlertCircle className="w-4 h-4 inline mr-1" />
+                Some transactions are uncategorized. Review them for better insights.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

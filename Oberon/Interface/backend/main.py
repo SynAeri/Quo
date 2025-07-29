@@ -16,6 +16,7 @@ from analysis.globals.users import User, UserManager
 from analysis.globals.transactions import *
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import hashlib
 
 
 # Basiq Token Gen
@@ -273,6 +274,51 @@ async def get_all_users():
         "user total": result["total"],
         "users": result["users"]
     }
+
+@app.get("/api/debug/test-category-grouper")
+async def test_category_grouper():
+    """Test the CategoryGrouper with sample data"""
+    try:
+        from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
+        
+        # Test data matching your screenshot
+        test_categories = [
+            {"name": "Cafes, Restaurants and Takeaway Food Services", "amount": 2450},
+            {"name": "Department Stores", "amount": 1641},
+            {"name": "Fuel Retailing", "amount": 1312},
+            {"name": "Health and General Insurance", "amount": 1072},
+            {"name": "Electricity Distribution", "amount": 840},
+            {"name": "Supermarket and Grocery Stores", "amount": 11818}
+        ]
+        
+        grouper = CategoryGrouper()
+        result = grouper.group_categories(test_categories)
+        
+        # Convert to array format
+        grouped_array = []
+        for group_name, group_data in result.items():
+            grouped_array.append({
+                'name': group_name,
+                'total': group_data['total'],
+                'percentage': group_data['percentage'],
+                'categories': group_data['subcategories']
+            })
+        
+        return {
+            "success": True,
+            "input_categories": len(test_categories),
+            "output_groups": len(grouped_array),
+            "grouped_data": grouped_array,
+            "raw_result": result
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 # ==================================================== #
 #                  Basiq Endpoint                      #
@@ -561,26 +607,28 @@ async def getEnhancedSpendByCat(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Add this to main.py
 
-# Update your existing groupedSpendingByPeriod endpoint to handle account filtering
+# In your main.py, update the getGroupedSpendingByPeriod endpoint:
+# Remove the redirect to getSpendingByAccount and handle account filtering within this endpoint
 
 @app.get("/api/analysis/groupedSpendingByPeriod/{user_id}")
 async def getGroupedSpendingByPeriod(
     user_id: str, 
     period: str = "month",
     group_categories: bool = True,
-    account_id: Optional[str] = None  # Add optional account_id parameter
+    account_id: Optional[str] = None
 ):
     """
     Get spending analysis with AI-grouped categories
     """
     try:
-        # If account_id is provided, redirect to account-specific endpoint
-        if account_id:
-            return await getSpendingByAccount(user_id, account_id, period)
+        print(f"=== Starting grouped spending analysis ===")
+        print(f"User ID: {user_id}, Period: {period}, Group: {group_categories}, Account: {account_id}")
         
-        # Otherwise, continue with all accounts analysis
+        # IMPORTANT: Comment out or remove this redirect
+        # if account_id:
+        #     return await getSpendingByAccount(user_id, account_id, period)
+        
         # Get user's Basiq ID
         user_data = database.get_user_by_id(user_id)
         
@@ -592,49 +640,204 @@ async def getGroupedSpendingByPeriod(
         if not basiq_user_id:
             return {
                 "categories": [],
-                "grouped_categories": {},
+                "grouped_categories": [],
                 "total": 0,
                 "period": period,
                 "message": "No bank account connected"
             }
         
-        # Create user instance
-        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        # Handle account-specific filtering
         
-        if isinstance(user.transactions, str):
-            return {
-                "categories": [],
-                "grouped_categories": {},
-                "total": 0,
-                "period": period,
-                "message": "Unable to fetch transaction data"
-            }
-        
-        # Filter transactions by date
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        filtered_transactions = []
-        
-        print(f"Filtering transactions for period: {period}")
-        print(f"Total transactions before filtering: {len(user.transactions)}")
-        
-        if period == "month":
-            start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            filtered_transactions = [
-                tx for tx in user.transactions 
-                if tx.date >= start_of_month
-            ]
-            period_label = f"{now.strftime('%B %Y')}"
-        elif period == "year":
-            start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            filtered_transactions = [
-                tx for tx in user.transactions 
-                if tx.date >= start_of_year
-            ]
-            period_label = f"{now.year}"
-        else:  # "all"
-            filtered_transactions = user.transactions
-            period_label = "All Time"
+        if account_id:
+            print(f"=====CHECKING ACCOUNT ID ==== {account_id}")
+            # Fetch account-specific transactions from Basiq
+            
+            # Get Basiq token
+            basiq_api_key = os.getenv("BASIQ_API_KEY")
+            auth_string = basiq_api_key
+            
+            token_response = requests.post(
+                "https://au-api.basiq.io/token",
+                headers={
+                    "accept": "application/json",
+                    "content-type": "application/x-www-form-urlencoded",
+                    "Authorization": f"Basic {auth_string}",
+                    "basiq-version": "3.0"
+                },
+                data={"scope": "SERVER_ACCESS"}
+            )
+            
+            if token_response.status_code != 200:
+                raise HTTPException(status_code=500, detail="Failed to get Basiq token")
+            
+            server_token = token_response.json()["access_token"]
+            
+            # Fetch transactions for specific account
+            transactions_url = f"https://au-api.basiq.io/users/{basiq_user_id}/transactions?filter=account.id.eq('{account_id}')"
+            
+            # No params needed since filter is in the URL
+            print(f"=== BASIQ API REQUEST ===")
+            print(f"URL: {transactions_url}")
+            print(f"Requesting transactions for account: {account_id}")
+            
+            transactions_response = requests.get(
+                transactions_url,
+                headers={
+                    "Authorization": f"Bearer {server_token}",
+                    "Accept": "application/json",
+                    "basiq-version": "3.0"
+                }
+                # No params parameter needed
+            )
+            
+            if transactions_response.status_code != 200:
+                print(f"❌ Basiq API Error: {transactions_response.status_code}")
+                print(f"Response: {transactions_response.text}")
+                raise HTTPException(status_code=500, detail="Failed to fetch transactions")
+            
+            transactions_data = transactions_response.json()
+            raw_transactions = transactions_data.get("data", [])
+
+            print(f"=== ACCOUNT FILTERING DEBUG ===")
+            print(f"Account ID: {account_id}")
+            print(f"Total raw transactions from Basiq: {len(raw_transactions)}")
+            
+            # Check if transactions are actually from the requested account
+            account_ids_in_response = set()
+            for tx in raw_transactions[:10]:  # Check first 10 transactions
+                tx_account_id = tx.get("account", {}).get("id") if isinstance(tx.get("account"), dict) else tx.get("account")
+                account_ids_in_response.add(tx_account_id)
+                print(f"  Transaction: {tx.get('description', 'N/A')[:30]} | Account: {tx_account_id}")
+
+            if len(account_ids_in_response) == 1 and account_id in account_ids_in_response:
+                print(f"✅ Filter working correctly - all transactions from account: {account_id}")
+            else:
+                print(f"⚠️ Filter issue - found accounts: {account_ids_in_response}")
+            print(f"==============================")
+
+            print(f"Unique account IDs in response: {account_ids_in_response}")
+            print(f"All transactions from requested account? {account_ids_in_response == {account_id}}")
+            print(f"==============================")
+
+            # Convert Basiq transactions to Transaction objects
+            from analysis.globals.transactions import Transaction
+            from datetime import datetime
+            
+            filtered_transactions = []
+            for tx in raw_transactions:
+
+                # Only include expenses
+                if float(tx.get("amount", 0)) < 0:
+                    tx_date_str = tx.get("postDate") or tx.get("transactionDate")
+                    
+                    # Fix: Check if it's already a datetime object
+                    if isinstance(tx_date_str, datetime):
+                        tx_date = tx_date_str
+                    elif isinstance(tx_date_str, str):
+                        tx_date = datetime.strptime(tx_date_str[:10], "%Y-%m-%d")
+                    else:
+                        tx_date = datetime.now()
+                    
+                    # Apply period filter
+                    now = datetime.now()
+                    include_tx = False
+                    
+                    if period == "month":
+                        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        include_tx = tx_date >= start_of_month
+                    elif period == "year":
+                        start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                        include_tx = tx_date >= start_of_year
+                    else:  # "all"
+                        include_tx = True
+                    
+                    if include_tx:
+                        # Extract category
+                        category_name = "Uncategorized"
+                        
+                        # Try enriched data
+                        enrich = tx.get("enrich", {})
+                        if enrich:
+                            category_data = enrich.get("category", {})
+                            if category_data:
+                                anzsic = category_data.get("anzsic", {})
+                                if anzsic:
+                                    class_data = anzsic.get("class", {})
+                                    if class_data:
+                                        category_name = class_data.get("title", "Uncategorized")
+                        
+                        # Fallback to subClass
+                        if category_name == "Uncategorized":
+                            subclass_obj = tx.get("subClass", {})
+                            if subclass_obj:
+                                category_name = subclass_obj.get("title", "Uncategorized")
+                        
+                        trans_obj = Transaction(
+                            description=tx.get("description", ""),  # First parameter
+                            category=category_name,                  # Second parameter
+                            date=tx_date.strftime('%Y-%m-%dT%H:%M:%SZ'),  # Third parameter (as string!)
+                            amount=abs(float(tx.get("amount", 0))),  # Fourth parameter
+                            mode="expense"                           # Fifth parameter
+                        )
+
+                        filtered_transactions.append(trans_obj)
+            print(f"Filtered transactions (after date/expense filter): {len(filtered_transactions)}")
+            print(f"==============================")
+            # Get account name
+            account_name = account_id
+            try:
+                account_response = requests.get(
+                    f"https://au-api.basiq.io/users/{basiq_user_id}/accounts/{account_id}",
+                    headers={
+                        "Authorization": f"Bearer {server_token}",
+                        "Accept": "application/json",
+                        "basiq-version": "3.0"
+                    }
+                )
+                if account_response.status_code == 200:
+                    account_data = account_response.json()
+                    account_name = account_data.get("name", account_id)
+            except:
+                pass
+            
+            period_label = f"{now.strftime('%B %Y')}" if period == "month" else str(now.year) if period == "year" else "All Time"
+            
+        else:
+            # Use existing logic for all accounts
+            user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+            
+            if isinstance(user.transactions, str):
+                return {
+                    "categories": [],
+                    "grouped_categories": [],
+                    "total": 0,
+                    "period": period,
+                    "message": "Unable to fetch transaction data"
+                }
+            
+            # Filter transactions by date
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            
+            if period == "month":
+                start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                filtered_transactions = [
+                    tx for tx in user.transactions 
+                    if tx.date >= start_of_month
+                ]
+                period_label = f"{now.strftime('%B %Y')}"
+            elif period == "year":
+                start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                filtered_transactions = [
+                    tx for tx in user.transactions 
+                    if tx.date >= start_of_year
+                ]
+                period_label = f"{now.year}"
+            else:  # "all"
+                filtered_transactions = user.transactions
+                period_label = "All Time"
+            
+            account_name = None
         
         print(f"Filtered transactions count: {len(filtered_transactions)}")
         
@@ -648,12 +851,13 @@ async def getGroupedSpendingByPeriod(
         if not categories:
             return {
                 "categories": [],
-                "grouped_categories": {},
+                "grouped_categories": [],
                 "enhanced_categories": {},
                 "total": 0,
                 "period": period,
                 "period_label": period_label,
                 "num_transactions": 0,
+                "account_name": account_name,
                 "message": f"No transactions found for {period_label}"
             }
         
@@ -665,17 +869,56 @@ async def getGroupedSpendingByPeriod(
         
         total_spending = sum(amounts)
         
-        # Enhanced analysis for unknown/no category
+        # Group categories if requested
+        grouped_categories_array = []
+        category_insights = {}
+        
+        if group_categories:
+            try:
+                print("Attempting to group categories...")
+                
+                from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
+                grouper = CategoryGrouper()
+                
+                print(f"Grouping {len(category_data)} categories")
+                grouped_dict = grouper.group_categories(category_data)
+                
+                print(f"group_categories returned type: {type(grouped_dict)}")
+                print(f"Grouped into {len(grouped_dict)} groups")
+                
+                # Convert to array format
+                for group_name, group_info in grouped_dict.items():
+                    grouped_categories_array.append({
+                        'name': group_name,
+                        'total': group_info['total'],
+                        'percentage': group_info['percentage'],
+                        'categories': group_info['subcategories']
+                    })
+                
+                # Sort by total descending
+                grouped_categories_array.sort(key=lambda x: x['total'], reverse=True)
+                
+                # Get category insights
+                if hasattr(grouper, 'get_category_insights'):
+                    category_insights = grouper.get_category_insights(grouped_dict)
+                
+                print(f"Created {len(grouped_categories_array)} groups")
+                
+            except Exception as e:
+                print(f"Error in category grouping: {e}")
+                import traceback
+                traceback.print_exc()
+                grouped_categories_array = []
+        
+        # Enhanced analysis for unknown categories
         enhanced_categories = {}
         try:
             from analysis.transactionAnalysis.deepAnalysis.categoryAssigner import EnhancedTransactionAnalysis
             
-            # Get transactions for "Unknown" and "No Category"
             special_categories = ['unknown', 'uncategorized', 'other', 'no category']
             
             for cat_name in categories:
                 if cat_name.lower() in special_categories:
-                    # Get transactions for this category
                     cat_transactions = [
                         tx for tx in filtered_transactions 
                         if tx.category.lower() == cat_name.lower()
@@ -702,21 +945,6 @@ async def getGroupedSpendingByPeriod(
         except Exception as e:
             print(f"Enhanced analysis error: {e}")
         
-        # Group categories if requested
-        grouped_categories = {}
-        category_insights = {}
-        
-        if group_categories:
-            try:
-                from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
-                grouper = CategoryGrouper()
-                grouped_categories = grouper.group_categories(category_data)
-                category_insights = grouper.get_category_insights(grouped_categories)
-            except Exception as e:
-                print(f"Category grouping error: {e}")
-                import traceback
-                traceback.print_exc()
-        
         # Calculate monthly stats
         from collections import defaultdict
         monthly_totals = defaultdict(float)
@@ -727,22 +955,28 @@ async def getGroupedSpendingByPeriod(
         num_months = len(monthly_totals) if monthly_totals else 1
         avg_monthly = total_spending / num_months if num_months > 0 else 0
         
-        return {
+        response = {
             "categories": category_data,
-            "grouped_categories": grouped_categories,
+            "grouped_categories": grouped_categories_array,
             "enhanced_categories": enhanced_categories,
             "total": total_spending,
             "period": period,
             "period_label": period_label,
             "average_monthly": avg_monthly,
             "num_transactions": len(filtered_transactions),
+            "account_name": account_name,
             "insights": {
                 "category_insights": category_insights,
                 "num_months": num_months,
                 "total_categories": len(categories),
+                "total_groups": len(grouped_categories_array),
                 "has_uncategorized": any(cat.lower() in ['unknown', 'uncategorized', 'other', 'no category'] for cat in categories) if categories else False
             }
         }
+        
+        print(f"=== Returning response with {len(grouped_categories_array)} groups ===")
+        
+        return response
         
     except HTTPException:
         raise
@@ -755,8 +989,6 @@ async def getGroupedSpendingByPeriod(
 # ==================================================== #
 #                  Account Management                  #
 # ==================================================== #
-
-# Replace the existing /api/accounts/{user_id} endpoint in your main.py with this version
 
 @app.get("/api/accounts/{user_id}")
 async def get_user_accounts(user_id: str):
@@ -1097,7 +1329,7 @@ async def getSpendingByAccount(
         
         # Debug: Let's see what the transaction data looks like
         if raw_transactions:
-            print(f"Sample transaction: {raw_transactions[0]}")
+           # print(f"Sample transaction: {raw_transactions[0]}")
             print(f"Category field: {raw_transactions[0].get('category')}")
             print(f"SubClass field: {raw_transactions[0].get('subClass')}")
         
@@ -1152,7 +1384,8 @@ async def getSpendingByAccount(
             
             # Debug first few transactions
             if len(category_totals) < 5:
-                print(f"TX: {tx.get('description')[:40]} | Cat: {category_name} | Amount: ${amount}")
+               # print(f"TX: {tx.get('description')[:40]} | Cat: {category_name} | Amount: ${amount}")
+                pass
             
             # Only count expenses (negative amounts)
             if float(tx.get("amount", 0)) < 0:
@@ -1169,13 +1402,27 @@ async def getSpendingByAccount(
         
         # Apply grouping
         grouped_categories = {}
+        grouped_categories_array = []  # Array format for frontend
         category_insights = {}
         try:
             from analysis.transactionAnalysis.deepAnalysis.categoryGrouper import CategoryGrouper
             grouper = CategoryGrouper()
             if category_data:  # Only group if we have categories
                 grouped_categories = grouper.group_categories(category_data)
-                print(f"Grouped categories result: {grouped_categories}")
+                # print(f"Grouped categories result: {grouped_categories}")
+                
+                # Convert grouped categories to array format for frontend
+                if grouped_categories:
+                    for group_name, categories in grouped_categories.items():
+                        if isinstance(categories, list):
+                            # Calculate total for this group
+                            group_total = sum(cat.get('amount', 0) for cat in categories)
+                            grouped_categories_array.append({
+                                'name': group_name,
+                                'total': group_total,
+                                'percentage': (group_total / total_amount * 100) if total_amount > 0 else 0,
+                                'categories': categories
+                            })
                 
                 # Get insights if the grouper has this method
                 if hasattr(grouper, 'get_category_insights'):
@@ -1315,7 +1562,7 @@ async def getSpendingByAccount(
         
         return {
             "categories": category_data,
-            "grouped_categories": grouped_categories,
+            "grouped_categories": grouped_categories_array,  # Use array format
             "enhanced_categories": enhanced_categories,
             "total": total_amount,
             "account_id": account_id,
@@ -1466,31 +1713,52 @@ async def getSpendingTrends(
         
         # Calculate statistics and predictions
         if len(trends) >= 3:
-            # Simple linear regression for prediction
-            import numpy as np
-            
-            x = np.array(range(len(trends)))
-            y = np.array([t["total"] for t in trends])
-            
-            # Calculate trend line
-            A = np.vstack([x, np.ones(len(x))]).T
-            m, c = np.linalg.lstsq(A, y, rcond=None)[0]
-            
-            # Predict next month
-            next_month_prediction = m * len(trends) + c
-            
-            # Calculate volatility (standard deviation)
-            volatility = np.std(y)
-            
-            insights = {
-                "trend": "increasing" if m > 0 else "decreasing",
-                "average_monthly": np.mean(y),
-                "next_month_prediction": max(0, next_month_prediction),
-                "volatility": volatility,
-                "volatility_rating": "high" if volatility > np.mean(y) * 0.3 else "moderate" if volatility > np.mean(y) * 0.15 else "low",
-                "change_rate": m,
-                "months_analyzed": len(trends)
-            }
+            try:
+                # Try to import numpy for predictions
+                import numpy as np
+                
+                # Simple linear regression for prediction
+                x = np.array(range(len(trends)))
+                y = np.array([t["total"] for t in trends])
+                
+                # Calculate trend line
+                A = np.vstack([x, np.ones(len(x))]).T
+                m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+                
+                # Predict next month
+                next_month_prediction = m * len(trends) + c
+                
+                # Calculate volatility (standard deviation)
+                volatility = np.std(y)
+                
+                insights = {
+                    "trend": "increasing" if m > 0 else "decreasing",
+                    "average_monthly": np.mean(y),
+                    "next_month_prediction": max(0, next_month_prediction),
+                    "volatility": volatility,
+                    "volatility_rating": "high" if volatility > np.mean(y) * 0.3 else "moderate" if volatility > np.mean(y) * 0.15 else "low",
+                    "change_rate": m,
+                    "months_analyzed": len(trends)
+                }
+            except ImportError as e:
+                print(f"NumPy import error: {e}")
+                # Fallback calculations without numpy
+                totals = [t["total"] for t in trends]
+                avg_monthly = sum(totals) / len(totals)
+                
+                # Simple trend detection
+                first_half_avg = sum(totals[:len(totals)//2]) / (len(totals)//2)
+                second_half_avg = sum(totals[len(totals)//2:]) / (len(totals) - len(totals)//2)
+                
+                insights = {
+                    "trend": "increasing" if second_half_avg > first_half_avg else "decreasing",
+                    "average_monthly": avg_monthly,
+                    "next_month_prediction": avg_monthly,  # Simple prediction
+                    "volatility": 0,
+                    "volatility_rating": "unknown",
+                    "change_rate": 0,
+                    "months_analyzed": len(trends)
+                }
         else:
             insights = {
                 "message": "Not enough data for trend analysis",
@@ -1502,21 +1770,43 @@ async def getSpendingTrends(
         
         # Seasonal patterns
         if len(trends) >= 12:
-            monthly_averages = defaultdict(list)
-            for trend in trends:
-                month_num = int(trend["month"].split("-")[1])
-                monthly_averages[month_num].append(trend["total"])
-            
-            # Find high spending months
-            avg_by_month = {k: np.mean(v) for k, v in monthly_averages.items()}
-            overall_avg = np.mean(list(avg_by_month.values()))
-            
-            high_months = [k for k, v in avg_by_month.items() if v > overall_avg * 1.2]
-            if high_months:
-                patterns.append({
-                    "type": "seasonal",
-                    "description": f"Higher spending typically in months: {high_months}"
-                })
+            try:
+                import numpy as np
+                monthly_averages = defaultdict(list)
+                for trend in trends:
+                    month_num = int(trend["month"].split("-")[1])
+                    monthly_averages[month_num].append(trend["total"])
+                
+                # Find high spending months
+                avg_by_month = {k: np.mean(v) for k, v in monthly_averages.items()}
+                overall_avg = np.mean(list(avg_by_month.values()))
+                
+                high_months = [k for k, v in avg_by_month.items() if v > overall_avg * 1.2]
+                if high_months:
+                    patterns.append({
+                        "type": "seasonal",
+                        "description": f"Higher spending typically in months: {high_months}"
+                    })
+            except ImportError:
+                # Simple seasonal detection without numpy
+                monthly_averages = defaultdict(list)
+                for trend in trends:
+                    month_num = int(trend["month"].split("-")[1])
+                    monthly_averages[month_num].append(trend["total"])
+                
+                # Calculate averages manually
+                avg_by_month = {}
+                for k, v in monthly_averages.items():
+                    avg_by_month[k] = sum(v) / len(v) if v else 0
+                
+                if avg_by_month:
+                    overall_avg = sum(avg_by_month.values()) / len(avg_by_month)
+                    high_months = [k for k, v in avg_by_month.items() if v > overall_avg * 1.2]
+                    if high_months:
+                        patterns.append({
+                            "type": "seasonal",
+                            "description": f"Higher spending typically in months: {high_months}"
+                        })
         
         # Category growth patterns
         category_trends = defaultdict(list)
@@ -1529,15 +1819,27 @@ async def getSpendingTrends(
         
         for cat, amounts in category_trends.items():
             if len(amounts) >= 3:
-                x = np.array(range(len(amounts)))
-                y = np.array(amounts)
-                A = np.vstack([x, np.ones(len(x))]).T
-                m, _ = np.linalg.lstsq(A, y, rcond=None)[0]
-                
-                if m > np.mean(amounts) * 0.1:  # Growing by more than 10% of average
-                    growing_categories.append(cat)
-                elif m < -np.mean(amounts) * 0.1:  # Declining by more than 10% of average
-                    declining_categories.append(cat)
+                try:
+                    import numpy as np
+                    x = np.array(range(len(amounts)))
+                    y = np.array(amounts)
+                    A = np.vstack([x, np.ones(len(x))]).T
+                    m, _ = np.linalg.lstsq(A, y, rcond=None)[0]
+                    
+                    if m > np.mean(amounts) * 0.1:  # Growing by more than 10% of average
+                        growing_categories.append(cat)
+                    elif m < -np.mean(amounts) * 0.1:  # Declining by more than 10% of average
+                        declining_categories.append(cat)
+                except ImportError:
+                    # Simple trend detection without numpy
+                    first_half = sum(amounts[:len(amounts)//2]) / (len(amounts)//2) if len(amounts)//2 > 0 else 0
+                    second_half = sum(amounts[len(amounts)//2:]) / (len(amounts) - len(amounts)//2) if (len(amounts) - len(amounts)//2) > 0 else 0
+                    avg = sum(amounts) / len(amounts) if amounts else 0
+                    
+                    if second_half > first_half * 1.1:  # Growing
+                        growing_categories.append(cat)
+                    elif second_half < first_half * 0.9:  # Declining
+                        declining_categories.append(cat)
         
         if growing_categories:
             patterns.append({
@@ -1568,7 +1870,6 @@ async def getSpendingTrends(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/api/analysis/savings-opportunities/{user_id}")
 async def getSavingsOpportunities(user_id: str, account_id: Optional[str] = None):
     """Identify potential savings opportunities using AI analysis"""
@@ -1585,10 +1886,13 @@ async def getSavingsOpportunities(user_id: str, account_id: Optional[str] = None
         
         user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
         
-        # Filter by account if needed
+        # Get all transactions (account filtering not supported at transaction level)
         transactions = user.transactions
+        
+        # Note: If account_id is provided, we can't filter at this level
+        # since the Transaction class doesn't have account_id
         if account_id:
-            transactions = [tx for tx in transactions if tx.account_id == account_id]
+            print(f"Note: Account-specific filtering not available for savings analysis")
         
         # Analyze last 3 months
         from datetime import datetime, timedelta
@@ -1697,17 +2001,22 @@ async def getSavingsOpportunities(user_id: str, account_id: Optional[str] = None
         # Calculate total potential savings
         total_savings = sum(opp["savings_potential"] for opp in opportunities[:5])  # Top 5 realistic
         
-        return {
+        # Add note about account filtering if requested
+        response = {
             "opportunities": opportunities[:10],  # Return top 10
             "total_savings_potential": total_savings,
             "analysis_period": "Last 3 months",
             "personalized_tips": generate_savings_tips(opportunities)
         }
         
+        if account_id:
+            response["note"] = "Analysis includes all accounts (account-specific filtering not available)"
+        
+        return response
+        
     except Exception as e:
         print(f"Error in savings analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def generate_savings_tips(opportunities):
     """Generate personalized tips based on identified opportunities"""
@@ -1887,3 +2196,247 @@ def get_category_reduction_tips(category: str) -> list[str]:
             return tips
     
     return ["Track all purchases in this category", "Set a weekly budget limit"]
+
+
+# ==================================================== #
+#             Price Comparison                         #
+# ==================================================== #
+
+class PriceComparisonRequest(BaseModel):
+    transaction_ids: list[str]
+    account_id: Optional[str] = None
+    
+@app.get("/api/analysis/recentPayments/{user_id}")
+async def getRecentPayments(
+    user_id: str,
+    limit: int = 20,
+    account_id: Optional[str] = None
+):
+    """Get recent payment transactions for price comparison"""
+    try:
+        print(f"Getting recent payments for user: {user_id}")
+        
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {"transactions": [], "message": "No bank account connected"}
+        
+        from analysis.globals.users import User
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        if isinstance(user.transactions, str):
+            print(f"Error getting transactions: {user.transactions}")
+            return {"transactions": [], "message": "Unable to fetch transactions"}
+        
+        print(f"Total transactions: {len(user.transactions)}")
+        
+        payment_transactions = []
+        
+        # Categories that are likely to be product purchases
+        product_categories = [
+            'supermarket', 'grocery', 'store', 'shop', 'retail',
+            'electronics', 'clothing', 'department', 'pharmacy',
+            'hardware', 'sporting', 'recreation', 'entertainment',
+            'cafe', 'restaurant', 'takeaway', 'food', 'dining',
+            'online', 'marketplace', 'merchant'
+        ]
+        
+        # Keywords to exclude
+        exclude_keywords = [
+            'transfer', 'withdrawal', 'deposit', 'interest', 'fee',
+            'insurance', 'rent', 'mortgage', 'utility', 'bill'
+        ]
+        
+        for tx in user.transactions:
+            # Check if it's a payment
+            if tx.mode == "payment" and 3 < tx.amount < 1000:
+                description_lower = tx.description.lower()
+                category_lower = tx.category.lower()
+                
+                # Skip if it contains exclude keywords
+                if any(keyword in description_lower for keyword in exclude_keywords):
+                    continue
+                
+                # Include if category matches product categories
+                is_product_category = any(cat in category_lower for cat in product_categories)
+                
+                # Include if it's a likely product purchase
+                if is_product_category or tx.amount < 200:  # Small amounts likely products
+                    # Generate ID
+                    tx_id = hashlib.md5(f"{tx.description}{tx.date}{tx.amount}".encode()).hexdigest()[:10]
+                    
+                    payment_transactions.append({
+                        "id": tx_id,
+                        "description": tx.description,
+                        "amount": tx.amount,
+                        "date": tx.date.strftime('%Y-%m-%d'),
+                        "category": tx.category
+                    })
+                    
+                    # Debug log for first few
+                    if len(payment_transactions) <= 5:
+                        print(f"Added: {tx.description} | ${tx.amount} | {tx.category}")
+        
+        # Sort by date (most recent first)
+        payment_transactions.sort(key=lambda x: x['date'], reverse=True)
+        
+        print(f"Found {len(payment_transactions)} payment transactions")
+        
+        return {
+            "transactions": payment_transactions[:limit],
+            "total": len(payment_transactions)
+        }
+        
+    except Exception as e:
+        print(f"Error getting recent payments: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analysis/priceComparison/{user_id}")
+async def runPriceComparison(
+    user_id: str,
+    request: PriceComparisonRequest
+):
+    """Run price comparison analysis on selected transactions"""
+    try:
+        print(f"Running price comparison for user: {user_id}")
+        print(f"Selected transactions: {request.transaction_ids}")
+        
+        # Import your scraper
+        from analysis.productComparison.alibaba_scraper import scrape_alibaba
+        from analysis.globals.users import User
+        
+        user_data = database.get_user_by_id(user_id)
+        
+        if "error" in user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        basiq_user_id = user_data.get("basiq_user_id")
+        
+        if not basiq_user_id:
+            return {"results": [], "message": "No bank account connected"}
+        
+        # Get user transactions
+        user = User(basiq_user_id, filter_transfer=True, filter_loans=True)
+        
+        if isinstance(user.transactions, str):
+            return {"results": [], "message": "Unable to fetch transactions"}
+        
+        results = []
+        
+        # Create a map of transaction IDs for faster lookup
+        tx_map = {}
+        for tx in user.transactions:
+            tx_id = hashlib.md5(f"{tx.description}{tx.date}{tx.amount}".encode()).hexdigest()[:10]
+            tx_map[tx_id] = tx
+        
+        # Process selected transactions
+        for tx_id in request.transaction_ids:
+            if tx_id in tx_map:
+                tx = tx_map[tx_id]
+                
+                try:
+                    print(f"Processing: {tx.description} - ${tx.amount}")
+                    
+                    # Run the scraper - it should return a list
+                    cheapest_products = scrape_alibaba(
+                        search_terms=tx.description,
+                        amount=tx.amount
+                    )
+                    
+                    # Check if we got results
+                    if cheapest_products and isinstance(cheapest_products, list) and len(cheapest_products) > 0:
+                        # Get the best alternative
+                        best_alternative = cheapest_products[0]
+                        
+                        savings = tx.amount - best_alternative['price']
+                        
+                        if savings > 0:  # Only include if there are actual savings
+                            results.append({
+                                'transaction': {
+                                    'id': tx_id,
+                                    'description': tx.description,
+                                    'amount': tx.amount,
+                                    'date': tx.date.strftime('%Y-%m-%d')
+                                },
+                                'product': {
+                                    'name': best_alternative['name'],
+                                    'price': best_alternative['price'],
+                                    'rating': best_alternative.get('rating', 0),
+                                    'link': best_alternative.get('link', '#')
+                                },
+                                'potential_savings': savings,
+                                'savings_percentage': (savings / tx.amount) * 100
+                            })
+                            print(f"Found savings: ${savings}")
+                    else:
+                        print(f"No cheaper alternatives found for {tx.description}")
+                    
+                except Exception as e:
+                    print(f"Error processing transaction {tx.description}: {e}")
+                    continue
+        
+        # Sort by savings potential
+        results.sort(key=lambda x: x['potential_savings'], reverse=True)
+        
+        print(f"Found {len(results)} products with savings")
+        
+        return {
+            "results": results,
+            "total_analyzed": len(request.transaction_ids),
+            "savings_found": len(results)
+        }
+        
+    except Exception as e:
+        print(f"Error in price comparison: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Optional: Test endpoint with mock data (useful for testing without selenium)
+@app.get("/api/analysis/testPriceComparison/{user_id}")
+async def testPriceComparison(user_id: str):
+    """Test endpoint with mock data"""
+    try:
+        import random
+        
+        # Mock some transactions
+        mock_transactions = [
+            {"id": "1", "description": "Wireless Headphones Sony", "amount": 150.00, "date": "2024-01-15"},
+            {"id": "2", "description": "USB C Cable 2m", "amount": 25.99, "date": "2024-01-10"},
+            {"id": "3", "description": "Laptop Stand Aluminum", "amount": 45.00, "date": "2024-01-05"}
+        ]
+        
+        # Mock cheaper alternatives
+        mock_results = []
+        for tx in mock_transactions:
+            savings_pct = random.uniform(15, 35)
+            cheaper_price = tx["amount"] * (1 - savings_pct / 100)
+            
+            mock_results.append({
+                'transaction': tx,
+                'product': {
+                    'name': f"{tx['description']} - Alternative Brand",
+                    'price': round(cheaper_price, 2),
+                    'rating': round(random.uniform(4.0, 4.8), 1),
+                    'link': 'https://www.alibaba.com/product-detail/example'
+                },
+                'potential_savings': round(tx["amount"] - cheaper_price, 2),
+                'savings_percentage': round(savings_pct, 1)
+            })
+        
+        return {
+            "results": mock_results,
+            "total_analyzed": len(mock_transactions),
+            "savings_found": len(mock_results)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

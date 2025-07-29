@@ -63,6 +63,36 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
         return 'All Time';
     }
   };
+  const hasGroupedData = data?.grouped_categories && 
+                        Array.isArray(data.grouped_categories) && 
+                        data.grouped_categories.length > 0;
+
+
+
+
+  // Force initial load if no data
+  useEffect(() => {
+    if (!data && !isLoading && !error) {
+      console.log('No data on mount, triggering initial fetch');
+      refetch();
+    }
+  }, [])
+
+  // Debug logging for grouped data
+  useEffect(() => {
+    if (data) {
+      console.log('Data received in component:', {
+        hasData: !!data,
+        categoriesCount: data.categories?.length || 0,
+        groupedCategoriesType: typeof data.grouped_categories,
+        groupedCategoriesIsArray: Array.isArray(data.grouped_categories),
+        groupedCategoriesLength: Array.isArray(data.grouped_categories) ? data.grouped_categories.length : 'N/A',
+        hasGroupedData
+      });
+    }
+
+
+  }, [data, hasGroupedData]);
 
   if (error) {
     return (
@@ -168,6 +198,8 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
               <p className="text-xs text-gray-500 mt-1">
                 {data.enhanced_categories && Object.keys(data.enhanced_categories).length > 0
                   ? `${Object.keys(data.enhanced_categories).length} with details`
+                  : data.grouped_categories && Object.keys(data.grouped_categories || {}).length > 0
+                  ? `${Object.keys(data.grouped_categories).length} groups`
                   : 'No enhanced categories'}
               </p>
             </div>
@@ -212,25 +244,43 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
 
       {/* Chart Display */}
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Spending Categories</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          {viewMode === 'grouped' && hasGroupedData ? 'Grouped Categories' : 'All Spending Categories'}
+        </h3>
+        
+        {/* Debug info - temporary */}
+        {data && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
+            <p>Debug: View Mode = {viewMode}</p>
+            <p>Has grouped data = {hasGroupedData ? 'YES' : 'NO'}</p>
+            <p>Grouped categories = {data.grouped_categories ? `Array(${data.grouped_categories.length})` : 'undefined'}</p>
+            <p>Should show grouped chart = {viewMode === 'grouped' && hasGroupedData ? 'YES' : 'NO'}</p>
+          </div>
+        )}
         
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
         ) : data ? (
-          viewMode === 'grouped' && data.grouped_categories && Object.keys(data.grouped_categories).length > 0 ? (
-            <GroupedSpendingChart
-              groupedData={data.grouped_categories}
-              total={data.total}
-              insights={data.insights}
-            />
+          viewMode === 'grouped' && hasGroupedData ? (
+            <>
+              <p className="text-sm text-gray-600 mb-2">Showing GroupedSpendingChart</p>
+              <GroupedSpendingChart
+                groupedData={data.grouped_categories}
+                total={data.total}
+                insights={data.insights}
+              />
+            </>
           ) : (
-            <FilterableSpendingChart
-              data={data.categories || []}
-              enhancedCategories={data.enhanced_categories || {}}
-              total={data.total || 0}
-            />
+            <>
+              <p className="text-sm text-gray-600 mb-2">Showing FilterableSpendingChart</p>
+              <FilterableSpendingChart
+                data={data.categories || []}
+                enhancedCategories={data.enhanced_categories || {}}
+                total={data.total || 0}
+              />
+            </>
           )
         ) : (
           <p className="text-gray-500 text-center py-8">No spending data available</p>
@@ -244,6 +294,9 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
         <p>Period: {selectedPeriod}</p>
         <p>Cache Key: {`spending_analysis_${userId}_${selectedPeriod}_${selectedAccountId || 'all'}`}</p>
         <p>Data loaded: {data ? 'Yes' : 'No'}</p>
+        {data?.grouped_categories && (
+          <p>Grouped categories type: {typeof data.grouped_categories} | Keys: {Object.keys(data.grouped_categories).length}</p>
+        )}
       </div>
     </div>
   );

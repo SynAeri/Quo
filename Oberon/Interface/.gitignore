@@ -20,6 +20,7 @@ build/
 
 # Environment variables
 .env
+.env.local
 
 # Python virtual environment
 venv/

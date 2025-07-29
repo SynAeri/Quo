@@ -241,13 +241,7 @@ export default function SavingsOpportunities({ userId, selectedAccountId }: Savi
                   </div>
                 ))}
               </div>
-              
-              <div className="mt-6 p-4 bg-yellow-50 rounded-lg">
-                <p className="text-sm text-yellow-800">
-                  <strong>Tip:</strong> Set a monthly reminder to review all subscriptions. 
-                  Many people save $50-200/month by canceling forgotten subscriptions!
-                </p>
-              </div>
+
             </>
           ) : (
             <p className="text-gray-600">No recurring subscriptions detected in your recent transactions.</p>

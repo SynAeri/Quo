@@ -1,6 +1,14 @@
 // app/utils/api.ts
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+function getAuthHeaders() {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+}
+
 interface User {
   id: string;
   email: string;
@@ -125,17 +133,14 @@ export async function saveBasiqConnection(data: {
   try {
     const response = await fetch(`${API_URL}/api/basiq/save-connection`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-
+    
     if (!response.ok) {
       throw new Error('Failed to save connection');
     }
-
+    
     return response.json();
   } catch (error) {
     console.error('Save connection error:', error);
