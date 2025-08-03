@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { Button } from '../Button';
 import { Modal, ModalTitle } from '../Modal';
+import Image from 'next/image';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
 
 export function AccountVerificationFormLearnMoreModal({ isOpen, onClose }) {

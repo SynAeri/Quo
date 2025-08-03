@@ -5,6 +5,7 @@ import { ErrorScene } from '../ErrorScene';
 import { useAccountVerificationForm } from './AccountVerificationFormProvider';
 import { StepLogo } from './StepLogo';
 import { StepHeading } from './StepHeading';
+import Image from 'next/image';
 
 export function AccountVerificationFormStep2InstitutionPicker() {
   const { goForward, updateAccountVerificationFormState } = useAccountVerificationForm();
