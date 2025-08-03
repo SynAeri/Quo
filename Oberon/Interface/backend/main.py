@@ -1,4 +1,8 @@
 # Handling API endpoints + Quo setup
+# ToDo: split sections in files for better code management since code size > 2000 LOC
+# ToDo: Manage the calculation code and re-arrange them into files such as models.py
+# ToDo: Refactor entire codebase with extra comments and file purpose to increase visiblity 
+
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException, Header # FastAPI: Framework, Exception: error responses for frontend
