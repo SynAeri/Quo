@@ -151,11 +151,9 @@ class BasiqAPI:
                         "accountName": account['name'],
                         "balance": account['balance'],
                         "institution": account['institution']
-                    }
-                    print(account)
-                    accounts.append(account)
-            
+                    } 
             return accounts
+
         except Exception as e:
             print(f"Failed getting accounts: {e}")
             
@@ -177,11 +175,11 @@ class BasiqAPI:
             if response.status_code == 200:
                 data = response.json()
                 # The only data we get from the account is its num, name, balance and institution (ANZ, ETC)
-                print(data)
+                # print(data)
             
             return accounts
         except Exception as e:
-            print(f"Failed getting accounts: {e}")
+            print(f"Failed getting accounts in Manager Globals")
             
     def create_account(self, user_personal_data):
         url = "https://au-api.basiq.io/users"

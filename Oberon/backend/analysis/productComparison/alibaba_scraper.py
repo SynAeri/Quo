@@ -67,7 +67,7 @@ def scrape_alibaba(search_terms, amount):
         # Get products
         products = driver.find_elements(By.CSS_SELECTOR, ".fy23-search-card")[:20]  # Limit to 20
         
-        print(f"Found {len(products)} products on page")
+        # print(f"Found {len(products)} products on page")
         
         for product in products:
             try:
@@ -113,10 +113,10 @@ def scrape_alibaba(search_terms, amount):
                     }
                     
                     cheapest_products.append(product_data)
-                    print(f"Added product: {product_data['name'][:50]}... - ${price_value}")
+                    # print(f"Added product: {product_data['name'][:50]}... - ${price_value}")
                     
             except Exception as e:
-                print(f"Error parsing product: {e}")
+                print(f"Error parsing product, feature scraper")
                 continue
         
         # Sort by price

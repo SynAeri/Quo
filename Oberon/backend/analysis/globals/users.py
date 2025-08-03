@@ -24,11 +24,11 @@ class User:
             data = self.BasiqManager.getTransactionData(self.filter_transfer, self.filter_loans)
 
             if not data:
-                print(f"No transaction data returned for user {self.user_id}")
+                print(f"No transaction data returned for user")
                 return [] # Return empty list 
             
             if isinstance(data, str): # incase of error
-                print(f"error fetching transactions: {data}")
+                print(f"error fetching transactions")
                 return [] # Return empty list
 
             transactions = []
@@ -46,7 +46,7 @@ class User:
                 except Exception as e:
                     print(f"Error creating transaction: {e}")
                     continue
-            print(f"Fetched {len(transactions)} transactions for user {self.user_id}")
+            
             return transactions
             
         except Exception as e:

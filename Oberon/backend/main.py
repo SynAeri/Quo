@@ -81,9 +81,8 @@ async def root():
 @app.post("/api/auth/signup")
 async def signup(user_data: SignupRequest): # user data is auto validated by SignupRequest method in model
     # endpoint handles user registration
-    # Auto validated via SignupRequest model
-    
-    print(f"Signup lodged: {user_data.email}") # since we look at data via email we print just this
+    # Auto validated via SignupRequest model 
+    # print(f"Signup lodged: {user_data.email}") # since we look at data via email we print just this
 
     result = database.create_user(
           user_data.email,
@@ -110,9 +109,6 @@ async def signup(user_data: SignupRequest): # user data is auto validated by Sig
         )
         
         # Storing basiq userID in databse
-        database.update_user_basiq_id(result["user_id"], basiq_user["id"])
-
-        print(f" Created Basiq User: {basiq_user['id']}")
 
     except Exception as e:
         print(f"⚠️ Failed to create Basiq user: {e}")
@@ -159,7 +155,7 @@ async def create_basiq_user(email: str, firstName: str, lastName: str):
     )
     
     if token_response.status_code != 200:
-        print(f"❌ Server token error: {token_response.status_code} - {token_response.text}")
+        print(f"❌ Server token error in main function of basiq account creation")
         raise Exception("Failed to get Basiq server token")
     
     server_token = token_response.json()["access_token"]
@@ -182,8 +178,8 @@ async def create_basiq_user(email: str, firstName: str, lastName: str):
     )
     
     if user_response.status_code != 201:
-        print(f"❌ User creation error: {user_response.status_code} - {user_response.text}")
-        raise Exception(f"Failed to create Basiq user: {user_response.text}")
+        print(f"❌ User creation error in main")
+        raise Exception(f"Failed to create Basiq user")
     
     print(f"✅ Created Basiq user successfully")
     return user_response.json()# Login endpoint
@@ -191,7 +187,7 @@ async def create_basiq_user(email: str, firstName: str, lastName: str):
 @app.post("/api/auth/login")
 async def login(credentials: LoginRequest): # credentials is auto validated by LoginRequest method in model
     
-    print(f"login lodged {credentials.email}")
+    print(f"login lodged")
 
     # call DB functions
     result = database.verify_user(credentials.email, credentials.password) # Checks if the email/pass fits
@@ -202,8 +198,8 @@ async def login(credentials: LoginRequest): # credentials is auto validated by L
         raise HTTPException(status_code=401, detail="Invalid credentials")
         # 401: Unauthorised to frontend
 
-    # Return success otherwise
-    print(f"user {credentials.email} logged in success")
+    
+    
 
     return {
         "success": True,
@@ -332,7 +328,7 @@ async def test_category_grouper():
 async def save_basiq_connection(connection_data: BasiqConnectionReq):
     """Save bank connection details after successful Basiq connection"""
     try:
-        print(f"Saving connection for user: {connection_data.userId}")
+        print(f"Saving connection for user")
         
         # Save to database
         result = database.save_basiq_connection(
@@ -2308,10 +2304,7 @@ async def runPriceComparison(
     request: PriceComparisonRequest
 ):
     """Run price comparison analysis on selected transactions"""
-    try:
-        print(f"Running price comparison for user: {user_id}")
-        print(f"Selected transactions: {request.transaction_ids}")
-        
+    try: 
         # Import your scraper
         from analysis.productComparison.alibaba_scraper import scrape_alibaba
         from analysis.globals.users import User

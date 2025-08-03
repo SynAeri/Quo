@@ -68,10 +68,3 @@ def print_results(results):
     print(f"Total Original Spending: ${original_spending:.2f}")
     print(f"Total Potential Savings: ${total_savings:.2f}")
     print(f"Potential Savings Percentage: {(total_savings/original_spending)*100:.1f}%")
-
-if __name__ == "__main__":
-    user_id = "d92eff61-8af1-4b8c-955c-8ae6299f497e"  # Test user id
-    # min_rating = 4.0  # Set your desired minimum rating
-    
-    results = find_cheapest_products(user_id)
-    print_results(results)
