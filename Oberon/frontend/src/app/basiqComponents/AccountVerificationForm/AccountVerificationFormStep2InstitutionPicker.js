@@ -75,7 +75,7 @@ export function AccountVerificationFormStep2InstitutionPicker() {
                     >
                       <div className="flex items-center w-full space-x-3">
                         {/* Institution logo */}
-                        <img
+                        <Image
                           className="w-10 h-10 sm:w-12 sm:h-12 rounded-md"
                           src={institution.logo.links.square}
                           alt={`Logo of ${institution.name}`}

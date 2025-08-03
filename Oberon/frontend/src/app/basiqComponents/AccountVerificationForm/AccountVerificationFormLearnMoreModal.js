@@ -26,7 +26,7 @@ export function AccountVerificationFormLearnMoreModal({ isOpen, onClose }) {
         </div>
         <div className="flex items-center justify-between">
           {/* Product logo - square */}
-          <img className="w-16 h-16" src="/product-logo-square.svg" alt="Piper logo" />
+          <Image className="w-16 h-16" src="/product-logo-square.svg" alt="Piper logo" />
           <div className="flex flex-col items-center justify-center space-y-1">
             {/* Icon: shield-check (outline) */}
             <svg
@@ -48,10 +48,10 @@ export function AccountVerificationFormLearnMoreModal({ isOpen, onClose }) {
               />
             </svg>
             {/* Basiq logo */}
-            <img className="w-16 h-4" src="/basiq-logo.svg" alt="Basiq logo" />
+            <Image className="w-16 h-4" src="/basiq-logo.svg" alt="Basiq logo" />
           </div>
           {/* Bank illustration */}
-          <img className="w-16 h-16" src="/bank-illustration.svg" alt="Bank illustration" />
+          <Image className="w-16 h-16" src="/bank-illustration.svg" alt="Bank illustration" />
         </div>
         {/* Dashed line - bottom */}
         <div className="px-8">

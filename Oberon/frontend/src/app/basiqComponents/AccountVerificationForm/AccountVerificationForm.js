@@ -307,12 +307,6 @@ export function AccountVerificationForm() {
       </div>
 
       {/* CANCELLATION MODAL */}
-      <AccountVerificationFormCancellationModal
-        isOpen={isCancellationModalOpen}
-        onClose={closeCancellationModal}
-        onConfirm={cancel}
-        cancelling={cancelling}
-      />
       <Analytics />
     </>
   );
