@@ -1,7 +1,7 @@
 import requests
 import json
-api_key = "OGZmYTY5YWYtODhlMy00YTU3LThmMzMtYTVlMGE3YzA5OGY3OjVjYjJhMmUxLWQ2MzgtNGExZi04OTUwLTU0NTVkOGQ5OWE4Ng==" ## For Tests
- 
+import os
+
 class BasiqAPI:
     # Class that incorporates most of the Basiq API requests
     def __init__(self, api_key: str, User):
@@ -16,7 +16,7 @@ class BasiqAPI:
         headers = {
             "accept": "application/json",
             "content-type": "application/x-www-form-urlencoded",
-            "Authorization": f"Basic {api_key}",
+            "Authorization": f"Basic {self.api_key}",
             "basiq-version": "3.0"
         }
 
