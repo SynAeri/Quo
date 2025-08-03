@@ -128,7 +128,7 @@ def scrape_alibaba(search_terms, amount):
         return cheapest_products[:5]
         
     except Exception as e:
-        print(f"Scraping error: {e}")
+        print(f"Scraping error")
         return []
         
     finally:

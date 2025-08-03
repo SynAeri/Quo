@@ -137,7 +137,7 @@ class EnhancedTransactionAnalysis:
     
     def get_correlation_matrix(self) -> Dict[str, Dict[str, float]]:
         """Find correlations between transaction patterns"""
-        # This could be expanded to find patterns like:
+        #  could be expanded to find patterns like:
         # - Transactions that often occur together
         # - Time-based patterns
         # - Amount-based patterns

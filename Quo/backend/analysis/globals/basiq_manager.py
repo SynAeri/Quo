@@ -27,7 +27,7 @@ class BasiqAPI:
             
             return Access_Token
         except Exception as e:
-            print(f"Error obtaining Access Token: {e}") 
+            print("Operation failed") 
 
     def grab_identities(self) -> dict:
         # Retrieves identities of users (I don't really know what identities are used for but i just added it here)
@@ -53,7 +53,7 @@ class BasiqAPI:
                         
             return identities,
         except Exception as e:
-            print(f"Failed getting identities: {e}")
+            print("Operation failed")
         
     def getTransactionData(self, filter_transfer: bool, filter_loans: bool) -> dict:
         # The most important function in retrieving user transactions.
@@ -121,7 +121,7 @@ class BasiqAPI:
                 print(f"Error: {response.status_code}, {response.text}")
                 return None
         except Exception as e:
-            print(f"Error occured when sending API Request {e}")
+            print("Operation failed")
             return None
     
     def get_accounts(self) -> dict:
@@ -155,7 +155,7 @@ class BasiqAPI:
             return accounts
 
         except Exception as e:
-            print(f"Failed getting accounts: {e}")
+            print("Operation failed")
             
     def get_single_account(self, account_id):
         if not self.auth_token:
@@ -197,4 +197,4 @@ class BasiqAPI:
             response = requests.post(url, json=payload, headers=headers)
             
         except Exception as e:
-            print(f"Error creating an account {e}")
+            print("Operation failed")

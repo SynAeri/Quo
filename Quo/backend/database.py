@@ -162,7 +162,7 @@ def verify_user(email: str, password: str):
         
     except sqlite3.Error as e:
         # In the case that errors occur in verification can see exception
-        return {"error": f"Database error: {e}"}
+        return {"error": f"Database error"}
     finally:
         conn.close()
 
@@ -235,8 +235,10 @@ def get_database_stats():
 # ==================================================== #
 #                  User Database Functions             #
 # ==================================================== #
+
 def update_user_basiq_id(user_id: str, basiq_user_id: str):
-    """Store the Basiq user ID for a user after creating their Basiq account"""
+    # Store Basiq user id after account creation
+
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -303,7 +305,7 @@ def get_user_by_id(user_id: str):
         conn.close()
 
 def save_basiq_connection(user_id: int, basiq_user_id: str, institution_name: str, account_ids: list):
-    """Save bank connection details after successful Basiq connection"""
+    # Basiq bank acc saving details after account creation
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -340,7 +342,8 @@ def save_basiq_connection(user_id: int, basiq_user_id: str, institution_name: st
         conn.close()
 
 def get_user_basiq_connections(user_id: int):
-    """Get all Basiq connections for a user"""
+    # Get all basiq connections from user
+
     conn = get_connection()
     cursor = conn.cursor()
     

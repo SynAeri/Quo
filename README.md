@@ -1,7 +1,5 @@
-
-# Oberon - A fintech analysis program
-[Link to pypi](https://pypi.org/project/chemcell/0.1/)
-A personal study on a curiosity + A free use package for tabulating chemical properties for your data needs!
+# Quo - A fintech analysis program/ Financial Risk Analyser
+Yet Another Curiosity, Application sandbox for the analysation of financial transactions with provided insights
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 
 ![Python](https://img.shields.io/badge/python-v3.10+-blue.svg)
@@ -9,18 +7,4 @@ A personal study on a curiosity + A free use package for tabulating chemical pro
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ## Basic Overview
-
-Oberon uses neural networks to analyse best spending practices and saving advice on banking products
-
-## About Oberon
-Oberon is
-
-## ~~Implementation~~
-
-
-## Usage
-
-## Citation
-API usage from Basiq, and basic analysis packages: pandas, seaborn.
-
-
+Quo Analyses and organises your spending and hidden subscriptions, while also providing spending alternatives which can offer cheaper alternatives.

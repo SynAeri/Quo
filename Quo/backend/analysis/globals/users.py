@@ -44,13 +44,13 @@ class User:
                     )
                     transactions.append(new_transaction)
                 except Exception as e:
-                    print(f"Error creating transaction: {e}")
+                    print("Operation failed")
                     continue
             
             return transactions
             
         except Exception as e:
-            print(f"Exception in fetch_transactions: {e}")
+            print("Operation failed")
             return []  # Return empty list on error            
                     
 

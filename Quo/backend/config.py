@@ -19,7 +19,7 @@ API_VERSION = "1.0.0"
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,https://quo-frontend.up.railway.app").split(",")
 CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 
-# Secret key from environment (important for production!)
+# Secret key from environment
 SECRET_KEY = os.getenv("SECRET_KEY", "your-default-dev-secret-key-change-this")
 
 # Helper function

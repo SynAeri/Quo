@@ -38,7 +38,7 @@ def find_cheapest_products(user_id):
                 })
                 
         # except Exception as e:
-        #     print(f"Error processing transaction {tx.description}: {e}")
+        #     print(f"Error processing transaction")
         #     continue
     
     return results

@@ -5,7 +5,7 @@
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, HTTPException, Header # FastAPI: Framework, Exception: error responses for frontend
+from fastapi import FastAPI, HTTPException, Header  
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,6 +13,7 @@ from pydantic.version import version_info # Basic communication
 
 from typing import Optional
 
+from datetime import datetime
 
 # analysis imports
 from analysis.globals.users import User, UserManager
@@ -111,7 +112,7 @@ async def signup(user_data: SignupRequest): # user data is auto validated by Sig
         # Storing basiq userID in databse
 
     except Exception as e:
-        print(f"⚠️ Failed to create Basiq user: {e}")
+        print(f"⚠️ Failed to create Basiq user")
         # You might want to delete the app user or handle this error
         # For now, we'll continue without Basiq user
 
@@ -258,7 +259,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Token verification error: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
@@ -326,7 +327,8 @@ async def test_category_grouper():
 
 @app.post("/api/basiq/save-connection")
 async def save_basiq_connection(connection_data: BasiqConnectionReq):
-    """Save bank connection details after successful Basiq connection"""
+    # Saves bank detailsafter account lodgement
+
     try:
         print(f"Saving connection for user")
         
@@ -347,13 +349,14 @@ async def save_basiq_connection(connection_data: BasiqConnectionReq):
         }
         
     except Exception as e:
-        print(f"Error saving connection: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=500, detail="Failed to save connection")
 
 
 @app.get("/api/basiq/check-connection/{user_id}")
 async def check_user_connection(user_id: str):
-    """Check if user has active Basiq connections"""
+    # Check if basiq connections are existant 
+
     try:
         # Get user connections from database
         connections = database.get_user_basiq_connections(int(user_id))
@@ -370,7 +373,7 @@ async def check_user_connection(user_id: str):
         }
         
     except Exception as e:
-        print(f"Error checking connections: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=500, detail="Failed to check connections")
 
 # ==================================================== #
@@ -379,6 +382,8 @@ async def check_user_connection(user_id: str):
 
 @app.get("/api/client-token")
 async def get_client_token(userId: str):
+    # Get client token
+    # Important in order to operate Basiq Functions
     try:
         user_data = database.get_user_by_id(userId)
 
@@ -419,11 +424,11 @@ async def get_client_token(userId: str):
         }
         
     except Exception as e:
-        print(f"Error getting Basiq token: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=500, detail="Failed to generate client token")
 
 # ==================================================== #
-#                  Analysis Endpoin                    #
+#                  Analysis Endpoint                   #
 # ==================================================== #
 
 @app.get("/api/analysis/deepAnalysis.subscriptionDetectorspendingByCategory/{user_id}")
@@ -518,18 +523,18 @@ async def getSpendByCat(user_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in spending analysis: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to get spending analysis: {str(e)}")
 
+# ==================================================== #
+#                  Deep Analysis                       #
+# ==================================================== #
 
-# Deep Analysis
 @app.get("/api/analysis/enhancedSpendingByCategory/{user_id}")
 async def getEnhancedSpendByCat(user_id: str):
-    """
-    Get enhanced spending analysis with subcategories for unknown/broad categories
-    """
+    # Get Enhanced spending analysis with subcats for unknown or broad categories
     try:
         # Get user's Basiq ID
         user_data = database.get_user_by_id(user_id)
@@ -586,7 +591,9 @@ async def getEnhancedSpendByCat(user_id: str):
                         for subcat, subdata in data['subcategories'].items()
                     ]
                 }
-        
+       
+
+
         return {
             "categories": [
                 {"name": cat, "amount": amt}
@@ -601,15 +608,11 @@ async def getEnhancedSpendByCat(user_id: str):
         }
         
     except Exception as e:
-        print(f"Error in enhanced spending analysis: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-# In your main.py, update the getGroupedSpendingByPeriod endpoint:
-# Remove the redirect to getSpendingByAccount and handle account filtering within this endpoint
 
 @app.get("/api/analysis/groupedSpendingByPeriod/{user_id}")
 async def getGroupedSpendingByPeriod(
@@ -618,16 +621,11 @@ async def getGroupedSpendingByPeriod(
     group_categories: bool = True,
     account_id: Optional[str] = None
 ):
-    """
-    Get spending analysis with AI-grouped categories
-    """
+    # Spending analysis via filtering by period 
     try:
         print(f"=== Starting grouped spending analysis ===")
         print(f"User ID: {user_id}, Period: {period}, Group: {group_categories}, Account: {account_id}")
         
-        # IMPORTANT: Comment out or remove this redirect
-        # if account_id:
-        #     return await getSpendingByAccount(user_id, account_id, period)
         
         # Get user's Basiq ID
         user_data = database.get_user_by_id(user_id)
@@ -675,7 +673,6 @@ async def getGroupedSpendingByPeriod(
             # Fetch transactions for specific account
             transactions_url = f"https://au-api.basiq.io/users/{basiq_user_id}/transactions?filter=account.id.eq('{account_id}')"
             
-            # No params needed since filter is in the URL
             print(f"=== BASIQ API REQUEST ===")
             print(f"URL: {transactions_url}")
             print(f"Requesting transactions for account: {account_id}")
@@ -687,7 +684,6 @@ async def getGroupedSpendingByPeriod(
                     "Accept": "application/json",
                     "basiq-version": "3.0"
                 }
-                # No params parameter needed
             )
             
             if transactions_response.status_code != 200:
@@ -720,9 +716,8 @@ async def getGroupedSpendingByPeriod(
             print(f"==============================")
 
             # Convert Basiq transactions to Transaction objects
-            from analysis.globals.transactions import Transaction
-            from datetime import datetime
-            
+            from analysis.globals.transactions import Transaction 
+
             filtered_transactions = []
             for tx in raw_transactions:
 
@@ -905,7 +900,7 @@ async def getGroupedSpendingByPeriod(
                 print(f"Created {len(grouped_categories_array)} groups")
                 
             except Exception as e:
-                print(f"Error in category grouping: {e}")
+                print("Operation failed")
                 import traceback
                 traceback.print_exc()
                 grouped_categories_array = []
@@ -943,7 +938,7 @@ async def getGroupedSpendingByPeriod(
                                 'subcategories': sorted(subcats, key=lambda x: x['amount'], reverse=True)
                             }
         except Exception as e:
-            print(f"Enhanced analysis error: {e}")
+            print("Operation failed")
         
         # Calculate monthly stats
         from collections import defaultdict
@@ -981,7 +976,7 @@ async def getGroupedSpendingByPeriod(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in grouped spending analysis: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1105,7 +1100,7 @@ async def get_user_accounts(user_id: str):
                 print(f"First account keys: {accounts_list[0].keys()}")
                 
         except Exception as e:
-            print(f"Error parsing Basiq response: {e}")
+            print("Operation failed")
             print(f"Raw response: {accounts_response.text[:500]}")  # First 500 chars
             return {
                 "accounts": [],
@@ -1152,7 +1147,7 @@ async def get_user_accounts(user_id: str):
                     formatted_accounts.append(account_data)
                     
             except Exception as e:
-                print(f"Error formatting account {account.get('id', 'unknown')}: {e}")
+                print("Operation failed")
                 continue
         
         # Determine default account ID
@@ -1180,7 +1175,7 @@ async def get_user_accounts(user_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Unexpected error in get_user_accounts: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1429,7 +1424,7 @@ async def getSpendingByAccount(
                     category_insights = grouper.get_category_insights(grouped_categories)
                     print(f"Category insights: {category_insights}")
         except Exception as e:
-            print(f"Error grouping categories: {e}")
+            print("Operation failed")
             import traceback
             traceback.print_exc()
         
@@ -1521,7 +1516,7 @@ async def getSpendingByAccount(
                                 'subcategories': sorted(subcats, key=lambda x: x['amount'], reverse=True)
                             }
         except Exception as e:
-            print(f"Enhanced analysis error: {e}")
+            print("Operation failed")
         
         total_amount = sum(cat["amount"] for cat in category_data)
         
@@ -1585,7 +1580,7 @@ async def getSpendingByAccount(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in account spending analysis: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1642,7 +1637,7 @@ async def fallback_account_analysis(user_id: str, basiq_user_id: str, account_id
         }
         
     except Exception as e:
-        print(f"Error in fallback analysis: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================================================== #
@@ -1741,7 +1736,7 @@ async def getSpendingTrends(
                     "months_analyzed": len(trends)
                 }
             except ImportError as e:
-                print(f"NumPy import error: {e}")
+                print("Operation failed")
                 # Fallback calculations without numpy
                 totals = [t["total"] for t in trends]
                 avg_monthly = sum(totals) / len(totals)
@@ -1865,7 +1860,7 @@ async def getSpendingTrends(
         }
         
     except Exception as e:
-        print(f"Error in trend analysis: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -2015,7 +2010,7 @@ async def getSavingsOpportunities(user_id: str, account_id: Optional[str] = None
         return response
         
     except Exception as e:
-        print(f"Error in savings analysis: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 def generate_savings_tips(opportunities):
@@ -2160,7 +2155,7 @@ async def generateBudgetRecommendations(
         return recommendations
         
     except Exception as e:
-        print(f"Error in budget recommendations: {e}")
+        print("Operation failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2293,7 +2288,7 @@ async def getRecentPayments(
         }
         
     except Exception as e:
-        print(f"Error getting recent payments: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -2376,7 +2371,7 @@ async def runPriceComparison(
                         print(f"No cheaper alternatives found for {tx.description}")
                     
                 except Exception as e:
-                    print(f"Error processing transaction {tx.description}: {e}")
+                    print("Operation failed")
                     continue
         
         # Sort by savings potential
@@ -2391,7 +2386,7 @@ async def runPriceComparison(
         }
         
     except Exception as e:
-        print(f"Error in price comparison: {e}")
+        print("Operation failed")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
