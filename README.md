@@ -7,4 +7,14 @@ Yet Another Curiosity, Application sandbox for the analysation of financial tran
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ## Basic Overview
-Quo Analyses and organises your spending and hidden subscriptions, while also providing spending alternatives which can offer cheaper alternatives.
+Quo Analyses and organises your spending and hidden subscriptions, while also providing spending alternatives.
+
+# Features
+### Spending Analysis
+![Demo GIF](Docs/Pictures/QuoGif1.gif)
+
+- Have collated data of select transactions available for analysis.
+- Have unknown transactions amended and analysed with select or all accounts
+- Variety of options to see data selectively or in total
+
+[Demo GIF2](Docs/Pictures/QuoGif2.gif)
