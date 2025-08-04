@@ -246,18 +246,7 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           {viewMode === 'grouped' && hasGroupedData ? 'Grouped Categories' : 'All Spending Categories'}
-        </h3>
-        
-        {/* Debug info - temporary */}
-        {data && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs">
-            <p>Debug: View Mode = {viewMode}</p>
-            <p>Has grouped data = {hasGroupedData ? 'YES' : 'NO'}</p>
-            <p>Grouped categories = {data.grouped_categories ? `Array(${data.grouped_categories.length})` : 'undefined'}</p>
-            <p>Should show grouped chart = {viewMode === 'grouped' && hasGroupedData ? 'YES' : 'NO'}</p>
-          </div>
-        )}
-        
+        </h3> 
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
