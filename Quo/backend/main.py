@@ -622,6 +622,8 @@ async def getGroupedSpendingByPeriod(
     account_id: Optional[str] = None
 ):
     # Spending analysis via filtering by period 
+
+    from datetime import datetime, timedelta
     try:
         print(f"=== Starting grouped spending analysis ===")
         print(f"User ID: {user_id}, Period: {period}, Group: {group_categories}, Account: {account_id}")
