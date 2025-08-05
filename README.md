@@ -17,4 +17,19 @@ Quo Analyses and organises your spending and hidden subscriptions, while also pr
 - Have unknown transactions amended and analysed with select or all accounts
 - Variety of options to see data selectively or in total
 
-[Demo GIF2](Docs/Pictures/QuoGif2.gif)
+### Trends + Predictions
+- MAINTENANCE: detecs trend directions, predicted money spent, and volatility
+- MAINTENANCE: Shows monthly spending trends
+- Shows top Categories spent on roughly a month
+- Shows increase and decreases in spending
+[Demo GIF](Docs/Pictures/QuoGif2.gif)
+
+### Saving Opportunities
+- Provides Quick suggestions to spending and tips along with how much you could save per month
+- MAINTENANCE: Provides Subscriptions on your accounts and the availability to cancel them
+
+### Price Comparison WIP
+- Provides an analysis on all transactions and features cheaper spending alternatives.
+
+
+
