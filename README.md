@@ -22,7 +22,8 @@ Quo Analyses and organises your spending and hidden subscriptions, while also pr
 - MAINTENANCE: Shows monthly spending trends
 - Shows top Categories spent on roughly a month
 - Shows increase and decreases in spending
-[Demo GIF](Docs/Pictures/QuoGif2.gif)
+
+![Demo GIF](Docs/Pictures/QuoGif2.gif)
 
 ### Saving Opportunities
 - Provides Quick suggestions to spending and tips along with how much you could save per month
