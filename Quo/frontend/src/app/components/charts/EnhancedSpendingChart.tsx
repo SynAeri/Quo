@@ -287,26 +287,6 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
           </div>
         </div>
       )}
-
-      {/* Debug Info (remove in production) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-gray-100 rounded-lg p-4 text-xs text-gray-600">
-          <p>Debug Info:</p>
-          <p>Account: {selectedAccountId || 'All'}</p>
-          <p>Period: {selectedPeriod}</p>
-          <p>View Mode: {viewMode}</p>
-          <p>Data loaded: {data ? 'Yes' : 'No'}</p>
-          {data && (
-            <>
-              <p>Categories: {data.categories?.length || 0}</p>
-              <p>Has grouped data: {hasGroupedData ? 'Yes' : 'No'}</p>
-              {hasGroupedData && (
-                <p>Groups: {data.grouped_categories.length}</p>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }

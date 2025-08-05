@@ -275,18 +275,6 @@ export default function EnhancedSpendingAnalysis({ userId, selectedAccountId }: 
           <p className="text-gray-500 text-center py-8">No spending data available</p>
         )}
       </div>
-
-      {/* Debug Info (remove in production) */}
-      <div className="bg-gray-100 rounded-lg p-4 text-xs text-gray-600">
-        <p>Debug Info:</p>
-        <p>Account: {selectedAccountId || 'All'}</p>
-        <p>Period: {selectedPeriod}</p>
-        <p>Cache Key: {`spending_analysis_${userId}_${selectedPeriod}_${selectedAccountId || 'all'}`}</p>
-        <p>Data loaded: {data ? 'Yes' : 'No'}</p>
-        {data?.grouped_categories && (
-          <p>Grouped categories type: {typeof data.grouped_categories} | Keys: {Object.keys(data.grouped_categories).length}</p>
-        )}
-      </div>
     </div>
   );
 }
