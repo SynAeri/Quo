@@ -13,7 +13,7 @@ from pydantic.version import version_info # Basic communication
 
 from typing import Optional
 
-from datetime import datetime
+
 
 # analysis imports
 from analysis.globals.users import User, UserManager
@@ -622,6 +622,8 @@ async def getGroupedSpendingByPeriod(
     account_id: Optional[str] = None
 ):
     # Spending analysis via filtering by period 
+
+    from datetime import datetime, timedelta
     try:
         print(f"=== Starting grouped spending analysis ===")
         print(f"User ID: {user_id}, Period: {period}, Group: {group_categories}, Account: {account_id}")

@@ -42,6 +42,6 @@ __pycache__/
 
 # Debug files
 playground/*
-
+Todo.*
 # Deployment
 railway.json
