@@ -6,9 +6,6 @@ Yet Another Curiosity, Application sandbox for the analysation of financial tran
 ![Contributions welcome](https://img.shields.io/badge/contributions-welcome-orange.svg)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-## Basic Overview
-Quo Analyses and organises your spending and hidden subscriptions, while also providing spending alternatives.
-
 # Features
 ### Spending Analysis
 ![Demo GIF](Docs/Pictures/QuoGif1.gif)
@@ -31,6 +28,3 @@ Quo Analyses and organises your spending and hidden subscriptions, while also pr
 
 ### Price Comparison WIP
 - Provides an analysis on all transactions and features cheaper spending alternatives.
-
-
-
