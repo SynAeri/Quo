@@ -15,7 +15,7 @@ Yet Another Curiosity, Application sandbox for the analysation of financial tran
 - Variety of options to see data selectively or in total
 
 ### Trends + Predictions
-- MAINTENANCE: detecs trend directions, predicted money spent, and volatility
+- MAINTENANCE: detects trend directions, predicted money spent, and volatility
 - MAINTENANCE: Shows monthly spending trends
 - Shows top Categories spent on roughly a month
 - Shows increase and decreases in spending
